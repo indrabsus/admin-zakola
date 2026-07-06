@@ -1,0 +1,876 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import Swal from "sweetalert2"
+import { Edit, Eye, Loader2, Search, Trash2, UserPlus } from "lucide-react"
+import AppShell from "@/components/app-shell"
+import Modal from "@/components/modal"
+import SortableTh from "@/components/sortable-th"
+import { apiFetch } from "@/lib/api"
+
+type KelasPpdb = {
+  id_kelas: string
+  nama_kelas: string
+  tingkat: string | number
+}
+
+type SiswaBaru = {
+  id_siswa_baru: string
+  id_kelas: string
+  kelas_ppdb?: KelasPpdb
+}
+
+type KelasPilihan = {
+  id_kelas: string
+  nama_kelas: string
+  tingkat: string | number | null
+  jurusan_ppdb?: { nama_jurusan?: string }
+}
+
+type Siswa = {
+  id_siswa: string
+  nama_lengkap: string
+  nisn: string
+  nik_siswa: string
+  tempat_lahir: string | null
+  tanggal_lahir: string | null
+  jenkel: "l" | "p"
+  agama: string
+  alamat: string
+  nama_ayah: string
+  nama_ibu: string
+  no_hp: string
+  no_hp_ortu: string
+  asal_sekolah: string
+  minat_jurusan1: string
+  minat_jurusan2: string
+  tahun: number
+  status: "aktif" | "nonaktif" | "keluar" | "ppdb"
+  bayar_daftar: "y" | "n" | "l"
+  username: string
+  siswa_baru?: SiswaBaru | null
+}
+
+const statusLabel: Record<string, string> = {
+  aktif: "Aktif",
+  nonaktif: "Non Aktif",
+  keluar: "Keluar",
+  ppdb: "PPDB",
+}
+
+const statusColor: Record<string, string> = {
+  aktif: "bg-green-100 text-green-700",
+  nonaktif: "bg-slate-200 text-slate-700",
+  keluar: "bg-red-100 text-red-700",
+  ppdb: "bg-blue-100 text-blue-700",
+}
+
+const emptyForm = {
+  nama_lengkap: "",
+  tempat_lahir: "",
+  tanggal_lahir: "",
+  jenkel: "l" as "l" | "p",
+  agama: "",
+  alamat: "",
+  nisn: "",
+  nik_siswa: "",
+  nama_ayah: "",
+  nama_ibu: "",
+  asal_sekolah: "",
+  no_hp: "",
+  status: "aktif" as Siswa["status"],
+}
+
+export default function SiswaPage() {
+  const [data, setData] = useState<Siswa[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  const [tahun, setTahun] = useState("")
+  const [status, setStatus] = useState("")
+  const [search, setSearch] = useState("")
+  const [searchInput, setSearchInput] = useState("")
+
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+
+  const [sortBy, setSortBy] = useState("nama")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const toggleSort = (key: string) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortBy(key)
+      setSortDir("asc")
+    }
+    setPage(1)
+  }
+
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detail, setDetail] = useState<Siswa | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+
+  const [editSiswa, setEditSiswa] = useState<Siswa | null>(null)
+  const [form, setForm] = useState(emptyForm)
+  const [saving, setSaving] = useState(false)
+
+  const [modalTambahManual, setModalTambahManual] = useState(false)
+
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      setError("")
+
+      const params = new URLSearchParams()
+      params.set("page", String(page))
+      params.set("limit", "20")
+      params.set("sort_by", sortBy)
+      params.set("sort_dir", sortDir)
+      if (tahun) params.set("tahun", tahun)
+      if (status) params.set("status", status)
+      if (search) params.set("search", search)
+
+      const res = await apiFetch(`/siswa/master?${params.toString()}`)
+
+      setData(Array.isArray(res.data) ? res.data : [])
+      setTotalPages(res.pagination?.total_pages || 1)
+      setTotal(res.pagination?.total || 0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, tahun, status, search, sortBy, sortDir])
+
+  const openDetail = async (item: Siswa) => {
+    try {
+      setDetail(null)
+      setDetailOpen(true)
+      setLoadingDetail(true)
+
+      const res = await apiFetch(`/data/detailsiswa/${item.id_siswa}`)
+      setDetail(res.data)
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+      setDetailOpen(false)
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
+
+  const openEdit = (item: Siswa) => {
+    setEditSiswa(item)
+    setForm({
+      nama_lengkap: item.nama_lengkap || "",
+      tempat_lahir: item.tempat_lahir || "",
+      tanggal_lahir: item.tanggal_lahir ? item.tanggal_lahir.slice(0, 10) : "",
+      jenkel: item.jenkel || "l",
+      agama: item.agama || "",
+      alamat: item.alamat || "",
+      nisn: item.nisn || "",
+      nik_siswa: item.nik_siswa || "",
+      nama_ayah: item.nama_ayah || "",
+      nama_ibu: item.nama_ibu || "",
+      asal_sekolah: item.asal_sekolah || "",
+      no_hp: item.no_hp || "",
+      status: item.status || "aktif",
+    })
+  }
+
+  const submitEdit = async () => {
+    if (!editSiswa) return
+
+    try {
+      setSaving(true)
+
+      await apiFetch("/ppdb/updatesiswa", {
+        method: "PUT",
+        body: JSON.stringify({ id_siswa: editSiswa.id_siswa, ...form }),
+      })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: "Data siswa berhasil diperbarui",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      })
+
+      setEditSiswa(null)
+      fetchData()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hapusSiswa = async (item: Siswa) => {
+    const confirm = await Swal.fire({
+      title: "Hapus Siswa?",
+      text: `Data ${item.nama_lengkap} akan dihapus permanen.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#dc2626",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      await apiFetch("/ppdb/deletesiswa", {
+        method: "DELETE",
+        body: JSON.stringify({ id_siswa: item.id_siswa }),
+      })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: "Data siswa berhasil dihapus",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      })
+
+      fetchData()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    }
+  }
+
+  const tahunOptions = useMemo(() => {
+    const now = new Date().getFullYear()
+    return Array.from({ length: 8 }, (_, i) => now - 5 + i)
+  }, [])
+
+  return (
+    <AppShell>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Siswa</h1>
+          <p className="text-sm text-slate-500">
+            Direktori siswa ({total} data)
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              setPage(1)
+              setSearch(searchInput)
+            }}
+            className="flex flex-wrap gap-2"
+          >
+            <select
+              value={tahun}
+              onChange={(e) => {
+                setPage(1)
+                setTahun(e.target.value)
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+            >
+              <option value="">Semua Tahun</option>
+              {tahunOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={status}
+              onChange={(e) => {
+                setPage(1)
+                setStatus(e.target.value)
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+            >
+              <option value="">Semua Status</option>
+              <option value="ppdb">PPDB</option>
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Non Aktif</option>
+              <option value="keluar">Keluar</option>
+            </select>
+
+            <div className="relative">
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Cari nama/NISN/username..."
+                autoComplete="off"
+                className="rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none"
+              />
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
+          </form>
+
+          <button
+            onClick={() => setModalTambahManual(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <UserPlus size={16} />
+            Tambah Siswa Manual
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+          {error}
+        </div>
+      )}
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 p-10 text-slate-600">
+            <Loader2 className="animate-spin" size={22} />
+            Memuat siswa...
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-slate-50">
+                <tr>
+                  <SortableTh label="Nama" sortKey="nama" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label="NISN" sortKey="nisn" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label="Kelas" sortKey="kelas" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label="Tahun" sortKey="tahun" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label="Status" sortKey="status" activeKey={sortBy} dir={sortDir} onSort={toggleSort} align="center" />
+                  <th className="px-4 py-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {data.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                      Data siswa tidak ditemukan
+                    </td>
+                  </tr>
+                ) : (
+                  data.map((item) => (
+                    <tr key={item.id_siswa} className="border-b last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-800">
+                          {item.nama_lengkap}
+                        </div>
+                        <div className="text-xs text-slate-500">{item.username}</div>
+                      </td>
+
+                      <td className="px-4 py-3">{item.nisn}</td>
+
+                      <td className="px-4 py-3">
+                        {item.siswa_baru?.kelas_ppdb?.nama_kelas || "-"}
+                      </td>
+
+                      <td className="px-4 py-3">{item.tahun}</td>
+
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            statusColor[item.status] || "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {statusLabel[item.status] || item.status}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="mx-auto flex w-fit overflow-hidden rounded-xl border border-slate-200">
+                          <button
+                            onClick={() => openDetail(item)}
+                            title="Lihat detail"
+                            className="border-r px-3 py-2 text-blue-600 hover:bg-blue-50"
+                          >
+                            <Eye size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => openEdit(item)}
+                            title="Edit siswa"
+                            className="border-r px-3 py-2 text-amber-600 hover:bg-amber-50"
+                          >
+                            <Edit size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => hapusSiswa(item)}
+                            title="Hapus siswa"
+                            className="px-3 py-2 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+            <span className="text-slate-500">
+              Halaman {page} dari {totalPages}
+            </span>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="rounded-lg border px-3 py-1 disabled:opacity-50"
+              >
+                Sebelumnya
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="rounded-lg border px-3 py-1 disabled:opacity-50"
+              >
+                Berikutnya
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {detailOpen && (
+        <Modal title="Detail Siswa" onClose={() => setDetailOpen(false)} maxWidth="max-w-2xl">
+          {loadingDetail || !detail ? (
+            <div className="flex items-center justify-center gap-3 p-8 text-slate-600">
+              <Loader2 className="animate-spin" size={22} />
+              Memuat detail...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+              <Field label="Nama Lengkap" value={detail.nama_lengkap} />
+              <Field label="NISN" value={detail.nisn} />
+              <Field label="NIK" value={detail.nik_siswa} />
+              <Field label="Jenis Kelamin" value={detail.jenkel === "l" ? "Laki-laki" : "Perempuan"} />
+              <Field label="Tempat, Tanggal Lahir" value={`${detail.tempat_lahir || "-"}, ${detail.tanggal_lahir?.slice(0, 10) || "-"}`} />
+              <Field label="Agama" value={detail.agama} />
+              <Field label="Alamat" value={detail.alamat} full />
+              <Field label="Nama Ayah" value={detail.nama_ayah} />
+              <Field label="Nama Ibu" value={detail.nama_ibu} />
+              <Field label="No HP" value={detail.no_hp} />
+              <Field label="No HP Ortu" value={detail.no_hp_ortu} />
+              <Field label="Asal Sekolah" value={detail.asal_sekolah} />
+              <Field label="Minat Jurusan" value={`${detail.minat_jurusan1 || "-"} / ${detail.minat_jurusan2 || "-"}`} />
+              <Field label="Tahun" value={String(detail.tahun || "-")} />
+              <Field label="Status" value={statusLabel[detail.status] || detail.status} />
+              <Field label="Username" value={detail.username} />
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {editSiswa && (
+        <Modal title={`Edit Siswa - ${editSiswa.nama_lengkap}`} onClose={() => setEditSiswa(null)} maxWidth="max-w-2xl">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <InputField label="Nama Lengkap" value={form.nama_lengkap} onChange={(v) => setForm({ ...form, nama_lengkap: v })} />
+            <InputField label="NISN" value={form.nisn} onChange={(v) => setForm({ ...form, nisn: v })} />
+            <InputField label="NIK" value={form.nik_siswa} onChange={(v) => setForm({ ...form, nik_siswa: v })} />
+            <InputField label="Tempat Lahir" value={form.tempat_lahir} onChange={(v) => setForm({ ...form, tempat_lahir: v })} />
+            <InputField label="Tanggal Lahir" type="date" value={form.tanggal_lahir} onChange={(v) => setForm({ ...form, tanggal_lahir: v })} />
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Jenis Kelamin</label>
+              <select
+                value={form.jenkel}
+                onChange={(e) => setForm({ ...form, jenkel: e.target.value as "l" | "p" })}
+                className="w-full rounded-xl border px-4 py-2"
+              >
+                <option value="l">Laki-laki</option>
+                <option value="p">Perempuan</option>
+              </select>
+            </div>
+
+            <InputField label="Agama" value={form.agama} onChange={(v) => setForm({ ...form, agama: v })} />
+            <InputField label="Alamat" value={form.alamat} onChange={(v) => setForm({ ...form, alamat: v })} />
+            <InputField label="Nama Ayah" value={form.nama_ayah} onChange={(v) => setForm({ ...form, nama_ayah: v })} />
+            <InputField label="Nama Ibu" value={form.nama_ibu} onChange={(v) => setForm({ ...form, nama_ibu: v })} />
+            <InputField label="No HP" value={form.no_hp} onChange={(v) => setForm({ ...form, no_hp: v })} />
+            <InputField label="Asal Sekolah" value={form.asal_sekolah} onChange={(v) => setForm({ ...form, asal_sekolah: v })} />
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as Siswa["status"] })}
+                className="w-full rounded-xl border px-4 py-2"
+              >
+                <option value="aktif">Aktif</option>
+                <option value="keluar">Keluar</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={submitEdit}
+            disabled={saving}
+            className="mt-6 w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {saving ? "Menyimpan..." : "Simpan Perubahan"}
+          </button>
+        </Modal>
+      )}
+
+      {modalTambahManual && (
+        <ModalTambahManual
+          defaultTahun={Number(tahun) || new Date().getFullYear()}
+          onClose={() => setModalTambahManual(false)}
+          onSuccess={() => {
+            setModalTambahManual(false)
+            fetchData()
+          }}
+        />
+      )}
+    </AppShell>
+  )
+}
+
+function Field({ label, value, full }: { label: string; value?: string | null; full?: boolean }) {
+  return (
+    <div className={full ? "md:col-span-2" : ""}>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="font-medium text-slate-800">{value || "-"}</p>
+    </div>
+  )
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: string
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-sm text-slate-600">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border px-4 py-2"
+      />
+    </div>
+  )
+}
+
+const emptyManualForm = {
+  nama_lengkap: "",
+  nisn: "",
+  nik_siswa: "",
+  tempat_lahir: "",
+  tanggal_lahir: "",
+  jenkel: "l" as "l" | "p",
+  agama: "",
+  alamat: "",
+  nama_ayah: "",
+  nama_ibu: "",
+  no_hp: "",
+  no_hp_ortu: "",
+  asal_sekolah: "",
+  username: "",
+  status: "aktif" as Siswa["status"],
+}
+
+function ModalTambahManual({
+  defaultTahun,
+  onClose,
+  onSuccess,
+}: {
+  defaultTahun: number
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [form, setForm] = useState(emptyManualForm)
+  const [tahun, setTahun] = useState(String(defaultTahun))
+
+  const [tahunKelas, setTahunKelas] = useState(defaultTahun)
+  const [kelasList, setKelasList] = useState<KelasPilihan[]>([])
+  const [idKelas, setIdKelas] = useState("")
+  const [loadingKelas, setLoadingKelas] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const tahunOptions = useMemo(() => {
+    const now = new Date().getFullYear()
+    return Array.from({ length: 8 }, (_, i) => now - 5 + i)
+  }, [])
+
+  const fetchKelas = async (thn: number) => {
+    try {
+      setLoadingKelas(true)
+      setIdKelas("")
+
+      const res = await apiFetch(`/ppdb/kelas?tahun=${thn}`)
+      setKelasList(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setLoadingKelas(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchKelas(tahunKelas)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tahunKelas])
+
+  const suggestUsername = () => {
+    const cleaned = form.nama_lengkap
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10)
+
+    if (!cleaned) {
+      Swal.fire("Isi nama dulu", "Nama lengkap wajib diisi sebelum membuat username.", "warning")
+      return
+    }
+
+    const random = Math.floor(100 + Math.random() * 900)
+    setForm((f) => ({ ...f, username: `${random}${cleaned}` }))
+  }
+
+  const submit = async () => {
+    const required: (keyof typeof form)[] = [
+      "nama_lengkap",
+      "nisn",
+      "nik_siswa",
+      "tanggal_lahir",
+      "agama",
+      "alamat",
+      "nama_ayah",
+      "nama_ibu",
+      "no_hp",
+      "no_hp_ortu",
+      "asal_sekolah",
+      "username",
+    ]
+
+    if (required.some((key) => !form[key]) || !tahun) {
+      Swal.fire("Belum lengkap", "Semua field biodata wajib diisi.", "warning")
+      return
+    }
+
+    if (!idKelas) {
+      Swal.fire("Pilih Kelas", "Kelas PPDB wajib dipilih untuk siswa baru ini.", "warning")
+      return
+    }
+
+    const kelasTerpilih = kelasList.find((k) => k.id_kelas === idKelas)
+    const namaJurusan = kelasTerpilih?.jurusan_ppdb?.nama_jurusan || "-"
+
+    try {
+      setSaving(true)
+
+      const created = await apiFetch("/ppdb/trfserver", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          tahun: Number(tahun),
+          bayar_daftar: "y",
+          minat_jurusan1: namaJurusan,
+          minat_jurusan2: namaJurusan,
+        }),
+      })
+
+      const idSiswa = created.data?.id_siswa
+
+      let kelasBerhasil = true
+      let pesanKelas = ""
+
+      if (idSiswa) {
+        try {
+          await apiFetch("/ppdb/postkelas", {
+            method: "POST",
+            body: JSON.stringify({ id_siswa: idSiswa, id_kelas: idKelas }),
+          })
+        } catch (err) {
+          kelasBerhasil = false
+          pesanKelas = err instanceof Error ? err.message : "Terjadi kesalahan"
+        }
+      }
+
+      if (kelasBerhasil) {
+        await Swal.fire({
+          title: "Berhasil",
+          html: `
+            <p>Siswa <b>${form.nama_lengkap}</b> berhasil ditambahkan dan dimasukkan ke kelas <b>${kelasTerpilih?.nama_kelas}</b>.</p>
+            <p class="mt-2 text-sm">Username: <b>${form.username}</b> (password default sistem PPDB)</p>
+          `,
+          icon: "success",
+        })
+      } else {
+        await Swal.fire({
+          title: "Siswa Tersimpan, Kelas Gagal",
+          html: `
+            <p>Data siswa <b>${form.nama_lengkap}</b> berhasil disimpan, namun gagal dimasukkan ke kelas.</p>
+            <p class="mt-2 text-sm">${pesanKelas}</p>
+            <p class="mt-2 text-sm">Anda bisa memasukkan siswa ke kelas secara manual lewat menu Kelas PPDB.</p>
+          `,
+          icon: "warning",
+        })
+      }
+
+      onSuccess()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Tambah Siswa Manual" onClose={onClose} maxWidth="max-w-2xl">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <InputField label="Nama Lengkap" value={form.nama_lengkap} onChange={(v) => setForm({ ...form, nama_lengkap: v })} />
+        <InputField label="NISN" value={form.nisn} onChange={(v) => setForm({ ...form, nisn: v })} />
+        <InputField label="NIK" value={form.nik_siswa} onChange={(v) => setForm({ ...form, nik_siswa: v })} />
+        <InputField label="Tempat Lahir" value={form.tempat_lahir} onChange={(v) => setForm({ ...form, tempat_lahir: v })} />
+        <InputField label="Tanggal Lahir" type="date" value={form.tanggal_lahir} onChange={(v) => setForm({ ...form, tanggal_lahir: v })} />
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Jenis Kelamin</label>
+          <select
+            value={form.jenkel}
+            onChange={(e) => setForm({ ...form, jenkel: e.target.value as "l" | "p" })}
+            className="w-full rounded-xl border px-4 py-2"
+          >
+            <option value="l">Laki-laki</option>
+            <option value="p">Perempuan</option>
+          </select>
+        </div>
+
+        <InputField label="Agama" value={form.agama} onChange={(v) => setForm({ ...form, agama: v })} />
+        <InputField label="Alamat" value={form.alamat} onChange={(v) => setForm({ ...form, alamat: v })} />
+        <InputField label="Nama Ayah" value={form.nama_ayah} onChange={(v) => setForm({ ...form, nama_ayah: v })} />
+        <InputField label="Nama Ibu" value={form.nama_ibu} onChange={(v) => setForm({ ...form, nama_ibu: v })} />
+        <InputField label="No HP" value={form.no_hp} onChange={(v) => setForm({ ...form, no_hp: v })} />
+        <InputField label="No HP Ortu" value={form.no_hp_ortu} onChange={(v) => setForm({ ...form, no_hp_ortu: v })} />
+        <InputField label="Asal Sekolah" value={form.asal_sekolah} onChange={(v) => setForm({ ...form, asal_sekolah: v })} />
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Status</label>
+          <select
+            value={form.status}
+            onChange={(e) => setForm({ ...form, status: e.target.value as Siswa["status"] })}
+            className="w-full rounded-xl border px-4 py-2"
+          >
+            <option value="aktif">Aktif</option>
+            <option value="nonaktif">Non Aktif</option>
+            <option value="ppdb">PPDB</option>
+            <option value="keluar">Keluar</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Tahun Masuk</label>
+          <select
+            value={tahun}
+            onChange={(e) => setTahun(e.target.value)}
+            className="w-full rounded-xl border px-4 py-2"
+          >
+            {tahunOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-sm text-slate-600">Username</label>
+          <div className="flex gap-2">
+            <input
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder="Username akun siswa"
+              autoComplete="off"
+              className="w-full rounded-xl border px-4 py-2"
+            />
+            <button
+              type="button"
+              onClick={suggestUsername}
+              className="shrink-0 rounded-xl bg-slate-800 px-4 text-sm font-semibold text-white hover:bg-slate-900"
+            >
+              Buatkan
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-slate-200 p-4">
+        <h3 className="mb-3 font-semibold text-slate-800">Pilih Kelas PPDB</h3>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm text-slate-600">Tahun PPDB</label>
+            <select
+              value={tahunKelas}
+              onChange={(e) => setTahunKelas(Number(e.target.value))}
+              className="w-full rounded-xl border px-4 py-2"
+            >
+              {tahunOptions.map((y) => (
+                <option key={y} value={y}>
+                  PPDB {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm text-slate-600">Kelas</label>
+            <select
+              value={idKelas}
+              onChange={(e) => setIdKelas(e.target.value)}
+              disabled={loadingKelas}
+              className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+            >
+              <option value="">
+                {loadingKelas ? "Memuat kelas..." : "Pilih kelas"}
+              </option>
+              {kelasList.map((item) => (
+                <option key={item.id_kelas} value={item.id_kelas}>
+                  {item.nama_kelas} - {item.jurusan_ppdb?.nama_jurusan || "-"} (Tingkat {item.tingkat})
+                </option>
+              ))}
+            </select>
+
+            {!loadingKelas && kelasList.length === 0 && (
+              <p className="mt-1 text-xs text-red-500">
+                Belum ada kelas untuk tahun ini. Tambahkan kelas dulu di menu Kelas PPDB.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={submit}
+        disabled={saving}
+        className="mt-6 w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+      >
+        {saving ? "Menyimpan..." : "Simpan & Masukkan ke Kelas"}
+      </button>
+    </Modal>
+  )
+}
