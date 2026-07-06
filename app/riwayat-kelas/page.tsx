@@ -111,14 +111,14 @@ export default function RiwayatKelasPage() {
   }
 
   const grouped = data.reduce<Record<string, Riwayat[]>>((acc, item) => {
-    const key = item.nama_kelas || "-"
+    const key = `${item.nama_kelas || "-"}__${item.tingkat || "-"}`
     acc[key] = acc[key] || []
     acc[key].push(item)
     return acc
   }, {})
 
-  const kelasSummary = Object.entries(grouped).map(([namaKelas, rows]) => ({
-    namaKelas,
+  const kelasSummary = Object.values(grouped).map((rows) => ({
+    namaKelas: rows[0]?.nama_kelas || "-",
     tingkat: rows[0]?.tingkat || "",
     jumlah: rows.length,
   }))
@@ -199,7 +199,7 @@ export default function RiwayatKelasPage() {
 
               <tbody>
                 {sortedKelasSummary.map((item) => (
-                  <tr key={item.namaKelas} className="border-b last:border-0 hover:bg-slate-50">
+                  <tr key={`${item.namaKelas}-${item.tingkat}`} className="border-b last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-slate-800">{item.namaKelas}</td>
                     <td className="px-4 py-3">{item.tingkat}</td>
                     <td className="px-4 py-3 text-center">
@@ -239,7 +239,7 @@ export default function RiwayatKelasPage() {
           tahunAjaran={tahunAjaran}
           namaKelas={detailKelas.namaKelas}
           tingkat={detailKelas.tingkat}
-          sudahMasuk={grouped[detailKelas.namaKelas] || []}
+          sudahMasuk={grouped[`${detailKelas.namaKelas}__${detailKelas.tingkat}`] || []}
           onClose={() => setDetailKelas(null)}
           onHapus={hapusRiwayat}
           onAssigned={() => fetchRiwayat(tahunAjaran)}
