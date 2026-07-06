@@ -513,6 +513,8 @@ export default function SiswaPage() {
                 className="w-full rounded-xl border px-4 py-2"
               >
                 <option value="aktif">Aktif</option>
+                <option value="nonaktif">Non Aktif</option>
+                <option value="ppdb">PPDB</option>
                 <option value="keluar">Keluar</option>
               </select>
             </div>
