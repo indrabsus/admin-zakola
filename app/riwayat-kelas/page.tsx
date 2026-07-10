@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { ArrowUpCircle, Eye, Loader2, Search, Trash2, UserPlus } from "lucide-react"
+import { ArrowUpCircle, Eye, Loader2, Plus, Search, Trash2, UserPlus } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
@@ -34,6 +34,7 @@ export default function RiwayatKelasPage() {
   const [loading, setLoading] = useState(true)
 
   const [modalNaikKelas, setModalNaikKelas] = useState(false)
+  const [modalKelasBaru, setModalKelasBaru] = useState(false)
   const [detailKelas, setDetailKelas] = useState<{ namaKelas: string; tingkat: string } | null>(null)
 
   const loadTahun = async () => {
@@ -162,6 +163,15 @@ export default function RiwayatKelasPage() {
           </select>
 
           <button
+            onClick={() => setModalKelasBaru(true)}
+            disabled={!tahunAjaran}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            <Plus size={16} />
+            Kelas Baru
+          </button>
+
+          <button
             onClick={() => setModalNaikKelas(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
           >
@@ -245,7 +255,81 @@ export default function RiwayatKelasPage() {
           onAssigned={() => fetchRiwayat(tahunAjaran)}
         />
       )}
+
+      {modalKelasBaru && (
+        <ModalKelasBaru
+          onClose={() => setModalKelasBaru(false)}
+          onCreate={(namaKelas, tingkat) => {
+            setModalKelasBaru(false)
+            setDetailKelas({ namaKelas, tingkat })
+          }}
+        />
+      )}
     </AppShell>
+  )
+}
+
+function ModalKelasBaru({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void
+  onCreate: (namaKelas: string, tingkat: string) => void
+}) {
+  const [namaKelas, setNamaKelas] = useState("")
+  const [tingkat, setTingkat] = useState("")
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const trimmedNama = namaKelas.trim()
+    const trimmedTingkat = tingkat.trim()
+
+    if (!trimmedNama || !trimmedTingkat) {
+      Swal.fire("Belum lengkap", "Tingkat dan nama kelas wajib diisi.", "warning")
+      return
+    }
+
+    onCreate(trimmedNama, trimmedTingkat)
+  }
+
+  return (
+    <Modal title="Buat Kelas Baru" onClose={onClose} maxWidth="max-w-md">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Tingkat</label>
+          <input
+            value={tingkat}
+            onChange={(e) => setTingkat(e.target.value)}
+            placeholder="Contoh: 10"
+            autoFocus
+            className="w-full rounded-xl border px-4 py-2"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Nama Kelas</label>
+          <input
+            value={namaKelas}
+            onChange={(e) => setNamaKelas(e.target.value)}
+            placeholder="Contoh: PPLG 1"
+            className="w-full rounded-xl border px-4 py-2"
+          />
+        </div>
+
+        <p className="text-xs text-slate-500">
+          Kelas akan langsung terbuka untuk mulai memasukkan siswa yang belum punya riwayat kelas di
+          tahun ajaran ini.
+        </p>
+
+        <button
+          type="submit"
+          className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700"
+        >
+          Lanjutkan
+        </button>
+      </form>
+    </Modal>
   )
 }
 
@@ -572,7 +656,7 @@ function ModalDetailKelas({
   onHapus: (item: Riwayat) => void
   onAssigned: () => void
 }) {
-  const [tab, setTab] = useState<"sudah" | "belum">("sudah")
+  const [tab, setTab] = useState<"sudah" | "belum">(sudahMasuk.length === 0 ? "belum" : "sudah")
 
   const [belumMasuk, setBelumMasuk] = useState<SiswaBelumKelas[]>([])
   const [loadingBelum, setLoadingBelum] = useState(false)
