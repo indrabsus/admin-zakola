@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { ArrowUpCircle, Eye, Loader2, Plus, Search, Trash2, UserPlus } from "lucide-react"
+import { ArrowUpCircle, Eye, Loader2, Plus, Printer, Search, Trash2, UserPlus } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
@@ -25,6 +25,96 @@ type Riwayat = {
   nama_kelas: string
   created_at?: string
   siswa_ppdb?: SiswaPpdbRef
+}
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+
+const printDaftarSiswa = (namaKelas: string, tingkat: string, tahunAjaran: string, rows: Riwayat[]) => {
+  const sorted = [...rows].sort((a, b) =>
+    (a.siswa_ppdb?.nama_lengkap || "").localeCompare(b.siswa_ppdb?.nama_lengkap || "")
+  )
+
+  const totalL = sorted.filter((r) => r.siswa_ppdb?.jenkel === "l").length
+  const totalP = sorted.filter((r) => r.siswa_ppdb?.jenkel === "p").length
+
+  const rowsHtml = sorted
+    .map((r, i) => {
+      const jenkel = r.siswa_ppdb?.jenkel === "l" ? "L" : r.siswa_ppdb?.jenkel === "p" ? "P" : "-"
+
+      return `
+        <tr>
+          <td style="text-align:center">${i + 1}</td>
+          <td>${escapeHtml(r.siswa_ppdb?.nama_lengkap || "-")}</td>
+          <td style="text-align:center">${jenkel}</td>
+          <td>${escapeHtml(r.siswa_ppdb?.nisn || "-")}</td>
+        </tr>
+      `
+    })
+    .join("")
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Daftar Siswa ${escapeHtml(namaKelas)}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: Arial, Helvetica, sans-serif; padding: 10mm; color: #0f172a; }
+          h1 { font-size: 15px; margin: 0 0 2px; }
+          p.sub { margin: 0 0 8px; color: #475569; font-size: 11px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #cbd5e1; padding: 2px 6px; font-size: 11px; line-height: 1.3; }
+          th { background: #f1f5f9; text-align: left; }
+          .recap { margin-top: 8px; font-size: 11px; display: flex; gap: 20px; }
+          @page { size: A4; margin: 10mm; }
+        </style>
+      </head>
+      <body>
+        <h1>Daftar Siswa Kelas ${escapeHtml(namaKelas)}</h1>
+        <p class="sub">Tingkat ${escapeHtml(tingkat)} &ndash; Tahun Ajaran ${escapeHtml(tahunAjaran)}</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32px;text-align:center">No</th>
+              <th>Nama</th>
+              <th style="width:80px;text-align:center">Jenis Kelamin</th>
+              <th style="width:120px">NISN</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || `<tr><td colspan="4" style="text-align:center;padding:10px;">Belum ada siswa</td></tr>`}
+          </tbody>
+        </table>
+
+        <div class="recap">
+          <div><b>Laki-laki (L):</b> ${totalL}</div>
+          <div><b>Perempuan (P):</b> ${totalP}</div>
+          <div><b>Total:</b> ${sorted.length}</div>
+        </div>
+      </body>
+    </html>
+  `
+
+  const printWindow = window.open("", "_blank")
+
+  if (!printWindow) {
+    Swal.fire("Gagal", "Popup diblokir browser. Izinkan popup untuk mencetak.", "warning")
+    return
+  }
+
+  printWindow.document.write(html)
+  printWindow.document.close()
+  printWindow.onload = () => {
+    printWindow.focus()
+    printWindow.print()
+  }
 }
 
 export default function RiwayatKelasPage() {
@@ -218,13 +308,30 @@ export default function RiwayatKelasPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setDetailKelas({ namaKelas: item.namaKelas, tingkat: item.tingkat })}
-                        title="Lihat siswa"
-                        className="mx-auto flex items-center justify-center rounded-lg border border-slate-200 p-2 text-blue-600 hover:bg-blue-50"
-                      >
-                        <Eye size={16} />
-                      </button>
+                      <div className="mx-auto flex w-fit gap-2">
+                        <button
+                          onClick={() => setDetailKelas({ namaKelas: item.namaKelas, tingkat: item.tingkat })}
+                          title="Lihat siswa"
+                          className="flex items-center justify-center rounded-lg border border-slate-200 p-2 text-blue-600 hover:bg-blue-50"
+                        >
+                          <Eye size={16} />
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            printDaftarSiswa(
+                              item.namaKelas,
+                              item.tingkat,
+                              tahunAjaran,
+                              grouped[`${item.namaKelas}__${item.tingkat}`] || []
+                            )
+                          }
+                          title="Print daftar siswa"
+                          className="flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                        >
+                          <Printer size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
