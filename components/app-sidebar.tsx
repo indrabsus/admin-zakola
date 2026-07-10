@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   UserCog,
   DatabaseBackup,
+  CreditCard,
+  Contact,
   Menu,
   X,
 } from "lucide-react"
@@ -20,10 +22,12 @@ import {
 const menus = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Siswa", href: "/siswa", icon: Users },
+  { title: "Staf", href: "/staf", icon: Contact },
   { title: "Kelas PPDB", href: "/kelas-ppdb", icon: School },
   { title: "Pengaturan Kelas", href: "/riwayat-kelas", icon: History },
   { title: "Master PPDB", href: "/master-ppdb", icon: ClipboardList },
   { title: "Master SPP", href: "/master-spp", icon: Wallet },
+  { title: "Master RFID", href: "/master-rfid", icon: CreditCard },
   { title: "Role", href: "/role", icon: ShieldCheck },
   { title: "User", href: "/user", icon: UserCog },
   { title: "Backup & Restore", href: "/backup-restore", icon: DatabaseBackup },
