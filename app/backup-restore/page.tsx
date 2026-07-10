@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { Database, Download, Loader2, Trash2, Upload } from "lucide-react"
+import { Clock, Database, Download, Loader2, Trash2, Upload } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import SortableTh from "@/components/sortable-th"
 import { API_URL } from "@/lib/api"
@@ -235,6 +235,16 @@ export default function BackupRestorePage() {
         </p>
       </div>
 
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+        <Clock size={18} className="mt-0.5 shrink-0" />
+        <div>
+          <b>Backup Otomatis Aktif:</b> sistem membuat backup database otomatis setiap hari jam
+          01:00 WIB. Hanya 3 backup terakhir yang disimpan di server — backup yang lebih lama
+          otomatis dihapus. Backup otomatis ditandai badge <b>Otomatis</b> pada daftar riwayat di
+          bawah.
+        </div>
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl bg-white p-6 shadow">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100">
@@ -339,7 +349,16 @@ export default function BackupRestorePage() {
               <tbody>
                 {sortedFiles.map((item) => (
                   <tr key={item.name} className="border-t hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs">{item.name}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs">{item.name}</span>
+                        {item.name.startsWith("auto-backup-") && (
+                          <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                            Otomatis
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">{formatSize(item.size)}</td>
                     <td className="px-4 py-3">{formatDate(item.created_at)}</td>
                     <td className="px-4 py-3">
