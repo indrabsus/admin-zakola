@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { Edit, Loader2, Printer, Trash2 } from "lucide-react"
+import { Edit, Loader2, Plus, Printer, Trash2 } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
@@ -16,6 +16,7 @@ type StafItem = {
   id_user: string
   nama_lengkap: string
   no_hp: string | null
+  uid_fp: number | null
   role: StafRole
 }
 
@@ -31,12 +32,18 @@ type RawStafRow = {
   id_user: string
   nama_lengkap: string
   no_hp: string | null
+  uid_fp: number | null
   user?: { id: string }
 }
 
 const roleLabel: Record<StafRole, string> = {
   guru: "Guru",
   tendik: "Tendik",
+}
+
+const ROLE_ID: Record<StafRole, string> = {
+  guru: "6",
+  tendik: "7",
 }
 
 const roleColor: Record<StafRole, string> = {
@@ -231,7 +238,19 @@ export default function StafPage() {
   const [editing, setEditing] = useState<StafItem | null>(null)
   const [editNama, setEditNama] = useState("")
   const [editNoHp, setEditNoHp] = useState("")
+  const [editUidFp, setEditUidFp] = useState("")
   const [saving, setSaving] = useState(false)
+
+  const [modalTambah, setModalTambah] = useState(false)
+  const emptyTambah = {
+    nama_lengkap: "",
+    nama_singkat: "",
+    jenkel: "l" as "l" | "p",
+    role: "guru" as StafRole,
+    no_hp: "",
+    uid_fp: "",
+  }
+  const [formTambah, setFormTambah] = useState(emptyTambah)
 
   const [printingId, setPrintingId] = useState<string | null>(null)
   const [bulanKehadiran, setBulanKehadiran] = useState(() => {
@@ -250,6 +269,7 @@ export default function StafPage() {
         id_user: item.user?.id || item.id_user,
         nama_lengkap: item.nama_lengkap,
         no_hp: item.no_hp,
+        uid_fp: item.uid_fp,
         role,
       })
 
@@ -276,6 +296,7 @@ export default function StafPage() {
     setEditing(item)
     setEditNama(item.nama_lengkap)
     setEditNoHp(item.no_hp || "")
+    setEditUidFp(item.uid_fp != null ? String(item.uid_fp) : "")
   }
 
   const submitEdit = async () => {
@@ -291,7 +312,11 @@ export default function StafPage() {
 
       await apiFetch(`/data/updateuser/${editing.id_data}`, {
         method: "PUT",
-        body: JSON.stringify({ nama_lengkap: editNama, no_hp: editNoHp || null }),
+        body: JSON.stringify({
+          nama_lengkap: editNama,
+          no_hp: editNoHp || null,
+          uid_fp: editUidFp ? Number(editUidFp) : null,
+        }),
       })
 
       await Swal.fire({
@@ -303,6 +328,52 @@ export default function StafPage() {
       })
 
       setEditing(null)
+      fetchData()
+    } catch (err) {
+      Swal.fire("Error", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openTambah = () => {
+    setFormTambah(emptyTambah)
+    setModalTambah(true)
+  }
+
+  const submitTambah = async () => {
+    if (!formTambah.nama_lengkap || !formTambah.nama_singkat) {
+      Swal.fire("Belum lengkap", "Nama lengkap dan nama singkat wajib diisi.", "warning")
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      const res = await apiFetch("/data/createuser", {
+        method: "POST",
+        body: JSON.stringify({
+          nama_lengkap: formTambah.nama_lengkap,
+          nama_singkat: formTambah.nama_singkat,
+          jenkel: formTambah.jenkel,
+          id_role: ROLE_ID[formTambah.role],
+          no_hp: formTambah.no_hp || null,
+          uid_fp: formTambah.uid_fp ? Number(formTambah.uid_fp) : null,
+        }),
+      })
+
+      setModalTambah(false)
+
+      await Swal.fire({
+        title: "Berhasil",
+        html: `
+          <p>Staf berhasil ditambahkan.</p>
+          <p class="mt-2 text-sm">Username: <b>${res.data?.user?.username || "-"}</b></p>
+          <p class="text-sm">Password default: <b>123456</b></p>
+        `,
+        icon: "success",
+      })
+
       fetchData()
     } catch (err) {
       Swal.fire("Error", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
@@ -365,6 +436,8 @@ export default function StafPage() {
         return row.role
       case "no_hp":
         return row.no_hp
+      case "uid_fp":
+        return row.uid_fp
       default:
         return null
     }
@@ -378,14 +451,24 @@ export default function StafPage() {
           <p className="text-sm text-slate-500">Daftar guru dan tenaga kependidikan (tendik).</p>
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Bulan Kehadiran (untuk Print)</label>
-          <input
-            type="month"
-            value={bulanKehadiran}
-            onChange={(e) => setBulanKehadiran(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-          />
+        <div className="flex flex-wrap items-end gap-3">
+          <button
+            onClick={openTambah}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <Plus size={16} />
+            Tambah Staf
+          </button>
+
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">Bulan Kehadiran (untuk Print)</label>
+            <input
+              type="month"
+              value={bulanKehadiran}
+              onChange={(e) => setBulanKehadiran(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+            />
+          </div>
         </div>
       </div>
 
@@ -403,6 +486,7 @@ export default function StafPage() {
                   <SortableTh label="Nama" sortKey="nama_lengkap" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Role" sortKey="role" activeKey={sortKey} dir={sortDir} onSort={toggleSort} align="center" />
                   <SortableTh label="No HP" sortKey="no_hp" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableTh label="UID FP" sortKey="uid_fp" activeKey={sortKey} dir={sortDir} onSort={toggleSort} align="center" />
                   <th className="px-4 py-3 text-center">Aksi</th>
                 </tr>
               </thead>
@@ -410,7 +494,7 @@ export default function StafPage() {
               <tbody>
                 {sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
                       Belum ada data staf
                     </td>
                   </tr>
@@ -424,6 +508,7 @@ export default function StafPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">{item.no_hp || "-"}</td>
+                      <td className="px-4 py-3 text-center">{item.uid_fp ?? "-"}</td>
                       <td className="px-4 py-3">
                         <div className="mx-auto flex w-fit overflow-hidden rounded-xl border border-slate-200">
                           <button
@@ -487,8 +572,103 @@ export default function StafPage() {
               />
             </div>
 
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">UID FP</label>
+              <input
+                type="number"
+                value={editUidFp}
+                onChange={(e) => setEditUidFp(e.target.value)}
+                placeholder="Contoh: 1001"
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
             <button
               onClick={submitEdit}
+              disabled={saving}
+              className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modalTambah && (
+        <Modal title="Tambah Staf" onClose={() => setModalTambah(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Nama Lengkap</label>
+              <input
+                value={formTambah.nama_lengkap}
+                onChange={(e) => setFormTambah({ ...formTambah, nama_lengkap: e.target.value })}
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Nama Singkat</label>
+              <input
+                value={formTambah.nama_singkat}
+                onChange={(e) => setFormTambah({ ...formTambah, nama_singkat: e.target.value })}
+                placeholder="Contoh: Budi"
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-sm text-slate-600">Jenis Kelamin</label>
+                <select
+                  value={formTambah.jenkel}
+                  onChange={(e) => setFormTambah({ ...formTambah, jenkel: e.target.value as "l" | "p" })}
+                  className="w-full rounded-xl border px-4 py-2"
+                >
+                  <option value="l">Laki-laki</option>
+                  <option value="p">Perempuan</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-slate-600">Role</label>
+                <select
+                  value={formTambah.role}
+                  onChange={(e) => setFormTambah({ ...formTambah, role: e.target.value as StafRole })}
+                  className="w-full rounded-xl border px-4 py-2"
+                >
+                  <option value="guru">Guru</option>
+                  <option value="tendik">Tendik</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">No HP</label>
+              <input
+                value={formTambah.no_hp}
+                onChange={(e) => setFormTambah({ ...formTambah, no_hp: e.target.value })}
+                placeholder="Contoh: 081234567890"
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">UID FP</label>
+              <input
+                type="number"
+                value={formTambah.uid_fp}
+                onChange={(e) => setFormTambah({ ...formTambah, uid_fp: e.target.value })}
+                placeholder="Contoh: 1001"
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Username dibuat otomatis dari nama, password default <b>123456</b>.
+            </p>
+
+            <button
+              onClick={submitTambah}
               disabled={saving}
               className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
