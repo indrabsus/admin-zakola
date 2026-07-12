@@ -360,8 +360,8 @@ export default function WhatsappBotPage() {
                     onClick={() => openChat(chat)}
                     className={
                       selectedChat?.id === chat.id
-                        ? "flex w-full items-start gap-3 border-b border-slate-100 bg-blue-50 p-3 text-left"
-                        : "flex w-full items-start gap-3 border-b border-slate-100 p-3 text-left hover:bg-slate-50"
+                        ? "flex w-full items-start gap-3 border-b border-slate-100 border-l-4 border-l-blue-600 bg-blue-100 p-3 pl-2.5 text-left"
+                        : "flex w-full items-start gap-3 border-b border-slate-100 border-l-4 border-l-transparent p-3 pl-2.5 text-left hover:bg-slate-50"
                     }
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-600">
