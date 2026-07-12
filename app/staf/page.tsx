@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { Edit, Loader2, Plus, Printer, Trash2 } from "lucide-react"
+import { Edit, Loader2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
 import { apiFetch } from "@/lib/api"
 import { useSort } from "@/lib/use-sort"
+import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
 type StafRole = "guru" | "tendik"
 
@@ -258,6 +259,28 @@ export default function StafPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   })
 
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null)
+  const [modalKirimWa, setModalKirimWa] = useState(false)
+  const [pesanWa, setPesanWa] = useState("")
+  const [sendingWa, setSendingWa] = useState(false)
+  const [sendProgress, setSendProgress] = useState({ done: 0, total: 0 })
+
+  useEffect(() => {
+    const loadWaStatus = async () => {
+      try {
+        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        setWaStatus(res.data.status)
+      } catch {
+        setWaStatus(null)
+      }
+    }
+
+    loadWaStatus()
+    const interval = setInterval(loadWaStatus, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
   const fetchData = async () => {
     try {
       setLoading(true)
@@ -443,6 +466,73 @@ export default function StafPage() {
     }
   })
 
+  const selectableIds = sorted.filter((s) => s.no_hp).map((s) => s.id_data)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id))
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(selectableIds))
+  }
+
+  const openKirimWa = () => {
+    setPesanWa("")
+    setModalKirimWa(true)
+  }
+
+  const kirimWa = async () => {
+    if (!pesanWa.trim()) {
+      Swal.fire({ icon: "warning", title: "Pesan Kosong", text: "Isi pesan terlebih dahulu." })
+      return
+    }
+
+    const penerima = sorted.filter((s) => selected.has(s.id_data) && s.no_hp)
+
+    setSendingWa(true)
+    setSendProgress({ done: 0, total: penerima.length })
+
+    const gagal: string[] = []
+
+    for (const staf of penerima) {
+      try {
+        await apiFetch("/wa/kirim", {
+          method: "POST",
+          body: JSON.stringify({ nomor: staf.no_hp, pesan: pesanWa }),
+        })
+      } catch {
+        gagal.push(staf.nama_lengkap)
+      }
+
+      setSendProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+      await new Promise((resolve) => setTimeout(resolve, 800))
+    }
+
+    setSendingWa(false)
+    setModalKirimWa(false)
+    setSelected(new Set())
+
+    if (gagal.length === 0) {
+      Swal.fire({
+        icon: "success",
+        title: "Terkirim",
+        text: `Pesan berhasil dikirim ke ${penerima.length} staf.`,
+      })
+    } else {
+      Swal.fire({
+        icon: "warning",
+        title: "Sebagian Gagal",
+        html: `Terkirim ${penerima.length - gagal.length} dari ${penerima.length}.<br/>Gagal: ${gagal.join(", ")}`,
+      })
+    }
+  }
+
   return (
     <AppShell>
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -458,6 +548,22 @@ export default function StafPage() {
           >
             <Plus size={16} />
             Tambah Staf
+          </button>
+
+          <button
+            onClick={openKirimWa}
+            disabled={selected.size === 0 || waStatus !== "ready"}
+            title={
+              waStatus !== "ready"
+                ? "Server WhatsApp tidak terhubung"
+                : selected.size === 0
+                ? "Pilih minimal satu staf"
+                : undefined
+            }
+            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <MessageCircle size={16} />
+            Kirim WA{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
 
           <div>
@@ -483,6 +589,14 @@ export default function StafPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-slate-50">
                 <tr>
+                  <th className="w-10 px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                  </th>
                   <SortableTh label="Nama" sortKey="nama_lengkap" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Role" sortKey="role" activeKey={sortKey} dir={sortDir} onSort={toggleSort} align="center" />
                   <SortableTh label="No HP" sortKey="no_hp" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -494,13 +608,23 @@ export default function StafPage() {
               <tbody>
                 {sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                       Belum ada data staf
                     </td>
                   </tr>
                 ) : (
                   sorted.map((item) => (
                     <tr key={item.id_data} className="border-b last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id_data)}
+                          onChange={() => toggleSelect(item.id_data)}
+                          disabled={!item.no_hp}
+                          title={!item.no_hp ? "Tidak ada nomor HP" : undefined}
+                          className="h-4 w-4 rounded border-slate-300 disabled:opacity-30"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-semibold text-slate-800">{item.nama_lengkap}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${roleColor[item.role]}`}>
@@ -673,6 +797,52 @@ export default function StafPage() {
               className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modalKirimWa && (
+        <Modal title="Kirim WhatsApp" onClose={() => !sendingWa && setModalKirimWa(false)}>
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1 text-sm text-slate-600">Penerima ({selected.size})</p>
+              <div className="max-h-28 overflow-y-auto rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">
+                {sorted
+                  .filter((s) => selected.has(s.id_data))
+                  .map((s) => s.nama_lengkap)
+                  .join(", ")}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Pesan</label>
+              <textarea
+                value={pesanWa}
+                onChange={(e) => setPesanWa(e.target.value)}
+                rows={5}
+                disabled={sendingWa}
+                placeholder="Tulis pesan yang akan dikirim..."
+                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+              />
+            </div>
+
+            <button
+              onClick={kirimWa}
+              disabled={sendingWa}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {sendingWa ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Mengirim {sendProgress.done}/{sendProgress.total}...
+                </>
+              ) : (
+                <>
+                  <MessageCircle size={16} />
+                  Kirim
+                </>
+              )}
             </button>
           </div>
         </Modal>
