@@ -150,6 +150,8 @@ export default function WhatsappBotPage() {
     socket.on("message", (message: WaMessage) => {
       const chatId = message.chatId
 
+      const isOpenChat = selectedChatRef.current?.id === chatId
+
       setChats((prev) => {
         const idx = prev.findIndex((c) => c.id === chatId)
         if (idx === -1) return prev
@@ -164,6 +166,8 @@ export default function WhatsappBotPage() {
             hasMedia: message.hasMedia,
           },
           timestamp: message.timestamp,
+          unreadCount:
+            message.fromMe || isOpenChat ? updated[idx].unreadCount : updated[idx].unreadCount + 1,
         }
         const [chat] = updated.splice(idx, 1)
         return [chat, ...updated]
@@ -205,6 +209,7 @@ export default function WhatsappBotPage() {
     setSelectedChat(chat)
     setMessages([])
     fetchMessages(chat)
+    setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c)))
   }
 
   const handleSend = async () => {
