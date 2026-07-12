@@ -15,6 +15,7 @@ import {
   DatabaseBackup,
   CreditCard,
   Contact,
+  MessageCircle,
   Menu,
   X,
 } from "lucide-react"
@@ -28,6 +29,7 @@ const menus = [
   { title: "Master PPDB", href: "/master-ppdb", icon: ClipboardList },
   { title: "Master SPP", href: "/master-spp", icon: Wallet },
   { title: "Master RFID", href: "/master-rfid", icon: CreditCard },
+  { title: "WhatsApp Bot", href: "/whatsapp-bot", icon: MessageCircle },
   { title: "Role", href: "/role", icon: ShieldCheck },
   { title: "User", href: "/user", icon: UserCog },
   { title: "Backup & Restore", href: "/backup-restore", icon: DatabaseBackup },
