@@ -84,10 +84,15 @@ export default function WhatsappBotPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedChatRef = useRef<WaChat | null>(null)
+  const statusRef = useRef<WaStatus>(status)
 
   useEffect(() => {
     selectedChatRef.current = selectedChat
   }, [selectedChat])
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const fetchStatus = async () => {
     try {
@@ -170,7 +175,7 @@ export default function WhatsappBotPage() {
     })
 
     const interval = setInterval(() => {
-      if (status !== "ready") fetchStatus()
+      if (statusRef.current !== "ready") fetchStatus()
     }, 10000)
 
     return () => {
@@ -284,6 +289,15 @@ export default function WhatsappBotPage() {
               <h2 className="text-lg font-bold text-slate-800">Terputus</h2>
               <p className="max-w-md text-sm text-slate-500">
                 Koneksi WhatsApp terputus. Sedang mencoba menyambungkan ulang...
+              </p>
+              <Loader2 className="animate-spin text-slate-400" size={22} />
+            </>
+          ) : status === "authenticated" ? (
+            <>
+              <h2 className="text-lg font-bold text-slate-800">Berhasil Terhubung</h2>
+              <p className="max-w-md text-sm text-slate-500">
+                QR berhasil dipindai. Sedang menyinkronkan riwayat chat dari WhatsApp, biasanya
+                memakan waktu beberapa puluh detik untuk chat pertama kali.
               </p>
               <Loader2 className="animate-spin text-slate-400" size={22} />
             </>
