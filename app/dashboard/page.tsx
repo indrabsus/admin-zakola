@@ -4,7 +4,17 @@ import { useEffect, useState } from "react"
 import AppShell from "@/components/app-shell"
 import InfoCard from "@/components/info-card"
 import { apiFetch } from "@/lib/api"
-import { Loader2, Users, School, ShieldCheck, UserCog, GraduationCap, UserCheck } from "lucide-react"
+import {
+  Loader2,
+  Users,
+  School,
+  ShieldCheck,
+  UserCog,
+  GraduationCap,
+  UserCheck,
+  MessageCircle,
+} from "lucide-react"
+import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
 type Summary = {
   totalSiswa: number
@@ -19,6 +29,22 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null)
+
+  useEffect(() => {
+    const loadWaStatus = async () => {
+      try {
+        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        setWaStatus(res.data.status)
+      } catch {
+        setWaStatus(null)
+      }
+    }
+
+    loadWaStatus()
+    const interval = setInterval(loadWaStatus, 15000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const tahunIni = new Date().getFullYear()
@@ -62,6 +88,37 @@ export default function DashboardPage() {
         <p className="text-sm text-slate-500">
           Ringkasan data sekolah secara umum
         </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+            <MessageCircle size={22} />
+          </div>
+          <div>
+            <p className="text-sm text-slate-500">WhatsApp Bot</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-800">
+              {waStatus === "ready"
+                ? "Server WhatsApp Terhubung"
+                : waStatus === null
+                ? "Memuat status..."
+                : "Server WhatsApp Tidak Terhubung"}
+            </h2>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={
+              waStatus === "ready"
+                ? "h-3 w-3 animate-pulse rounded-full bg-green-500"
+                : "h-3 w-3 rounded-full bg-slate-300"
+            }
+          />
+          <span className="text-sm font-medium text-slate-500">
+            {waStatus === "ready" ? "Online" : "Offline"}
+          </span>
+        </div>
       </div>
 
       {error && (
