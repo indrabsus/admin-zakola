@@ -27,6 +27,11 @@ type KelasPilihan = {
   jurusan_ppdb?: { nama_jurusan?: string }
 }
 
+type KelasRiwayat = {
+  tingkat: string
+  nama_kelas: string
+}
+
 type Siswa = {
   id_siswa: string
   nama_lengkap: string
@@ -91,6 +96,16 @@ export default function SiswaPage() {
   const [search, setSearch] = useState("")
   const [searchInput, setSearchInput] = useState("")
 
+  const [tahunAjaranList, setTahunAjaranList] = useState<string[]>([])
+  const [tahunAjaranFilter, setTahunAjaranFilter] = useState("")
+  const [kelasRiwayatList, setKelasRiwayatList] = useState<KelasRiwayat[]>([])
+  const [kelasFilter, setKelasFilter] = useState("")
+
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [modalGantiStatus, setModalGantiStatus] = useState(false)
+  const [statusBaru, setStatusBaru] = useState<Siswa["status"]>("aktif")
+  const [savingBulk, setSavingBulk] = useState(false)
+
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -131,12 +146,17 @@ export default function SiswaPage() {
       if (tahun) params.set("tahun", tahun)
       if (status) params.set("status", status)
       if (search) params.set("search", search)
+      if (kelasFilter && tahunAjaranFilter) {
+        params.set("tahun_ajaran", tahunAjaranFilter)
+        params.set("kelas", kelasFilter)
+      }
 
       const res = await apiFetch(`/siswa/master?${params.toString()}`)
 
       setData(Array.isArray(res.data) ? res.data : [])
       setTotalPages(res.pagination?.total_pages || 1)
       setTotal(res.pagination?.total || 0)
+      setSelected(new Set())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan")
     } finally {
@@ -147,7 +167,47 @@ export default function SiswaPage() {
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, tahun, status, search, sortBy, sortDir])
+  }, [page, tahun, status, search, sortBy, sortDir, kelasFilter, tahunAjaranFilter])
+
+  useEffect(() => {
+    const loadTahunAjaran = async () => {
+      try {
+        const [aktifRes, listRes] = await Promise.all([
+          apiFetch("/riwayat-kelas/tahun-aktif"),
+          apiFetch("/riwayat-kelas/tahun-list"),
+        ])
+
+        const list: string[] = Array.isArray(listRes.data) ? listRes.data : []
+        setTahunAjaranList(list)
+        setTahunAjaranFilter(aktifRes.data?.tahun_ajaran || list[0] || "")
+      } catch {
+        // biarkan kosong, filter kelas cukup tidak aktif kalau gagal dimuat
+      }
+    }
+
+    loadTahunAjaran()
+  }, [])
+
+  useEffect(() => {
+    const loadKelasRiwayat = async () => {
+      if (!tahunAjaranFilter) {
+        setKelasRiwayatList([])
+        return
+      }
+
+      try {
+        const res = await apiFetch(
+          `/riwayat-kelas/kelas-list?tahun_ajaran=${encodeURIComponent(tahunAjaranFilter)}`
+        )
+        setKelasRiwayatList(Array.isArray(res.data) ? res.data : [])
+      } catch {
+        setKelasRiwayatList([])
+      }
+    }
+
+    loadKelasRiwayat()
+    setKelasFilter("")
+  }, [tahunAjaranFilter])
 
   const openDetail = async (item: Siswa) => {
     try {
@@ -245,6 +305,118 @@ export default function SiswaPage() {
     }
   }
 
+  const allSelected = data.length > 0 && data.every((item) => selected.has(item.id_siswa))
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(data.map((item) => item.id_siswa)))
+  }
+
+  const openGantiStatus = () => {
+    setStatusBaru("aktif")
+    setModalGantiStatus(true)
+  }
+
+  const submitGantiStatus = async () => {
+    const ids = Array.from(selected)
+
+    try {
+      setSavingBulk(true)
+
+      const results = await Promise.allSettled(
+        ids.map((id_siswa) =>
+          apiFetch("/ppdb/updatesiswa", {
+            method: "PUT",
+            body: JSON.stringify({ id_siswa, status: statusBaru }),
+          })
+        )
+      )
+
+      const gagal = results.filter((r) => r.status === "rejected").length
+
+      setModalGantiStatus(false)
+
+      if (gagal === 0) {
+        await Swal.fire({
+          title: "Berhasil",
+          text: `Status ${ids.length} siswa berhasil diubah.`,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        })
+      } else {
+        await Swal.fire({
+          title: "Sebagian Gagal",
+          text: `${ids.length - gagal} dari ${ids.length} berhasil diubah, ${gagal} gagal.`,
+          icon: "warning",
+        })
+      }
+
+      fetchData()
+    } finally {
+      setSavingBulk(false)
+    }
+  }
+
+  const hapusMassal = async () => {
+    const ids = Array.from(selected)
+
+    const confirm = await Swal.fire({
+      title: "Hapus Siswa Terpilih?",
+      text: `${ids.length} data siswa akan dihapus permanen.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#dc2626",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setSavingBulk(true)
+
+      const results = await Promise.allSettled(
+        ids.map((id_siswa) =>
+          apiFetch("/ppdb/deletesiswa", {
+            method: "DELETE",
+            body: JSON.stringify({ id_siswa }),
+          })
+        )
+      )
+
+      const gagal = results.filter((r) => r.status === "rejected").length
+
+      if (gagal === 0) {
+        await Swal.fire({
+          title: "Berhasil",
+          text: `${ids.length} data siswa berhasil dihapus.`,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        })
+      } else {
+        await Swal.fire({
+          title: "Sebagian Gagal",
+          text: `${ids.length - gagal} dari ${ids.length} berhasil dihapus, ${gagal} gagal.`,
+          icon: "warning",
+        })
+      }
+
+      fetchData()
+    } finally {
+      setSavingBulk(false)
+    }
+  }
+
   const tahunOptions = useMemo(() => {
     const now = new Date().getFullYear()
     return Array.from({ length: 8 }, (_, i) => now - 5 + i)
@@ -300,6 +472,40 @@ export default function SiswaPage() {
               <option value="keluar">Keluar</option>
             </select>
 
+            <select
+              value={tahunAjaranFilter}
+              onChange={(e) => {
+                setPage(1)
+                setTahunAjaranFilter(e.target.value)
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+            >
+              <option value="">Tahun Ajaran</option>
+              {tahunAjaranList.map((ta) => (
+                <option key={ta} value={ta}>
+                  {ta}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={kelasFilter}
+              onChange={(e) => {
+                setPage(1)
+                setKelasFilter(e.target.value)
+              }}
+              disabled={!tahunAjaranFilter}
+              title="Filter berdasarkan kelas terkini (riwayat kelas), bukan kelas PPDB"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none disabled:opacity-60"
+            >
+              <option value="">Semua Kelas</option>
+              {kelasRiwayatList.map((k) => (
+                <option key={k.nama_kelas} value={k.nama_kelas}>
+                  {k.nama_kelas} (Tingkat {k.tingkat})
+                </option>
+              ))}
+            </select>
+
             <div className="relative">
               <input
                 value={searchInput}
@@ -314,6 +520,26 @@ export default function SiswaPage() {
               />
             </div>
           </form>
+
+          <button
+            onClick={openGantiStatus}
+            disabled={selected.size === 0}
+            title={selected.size === 0 ? "Pilih minimal satu siswa" : undefined}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Edit size={16} />
+            Ganti Status{selected.size > 0 ? ` (${selected.size})` : ""}
+          </button>
+
+          <button
+            onClick={hapusMassal}
+            disabled={selected.size === 0 || savingBulk}
+            title={selected.size === 0 ? "Pilih minimal satu siswa" : undefined}
+            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Trash2 size={16} />
+            Hapus{selected.size > 0 ? ` (${selected.size})` : ""}
+          </button>
 
           <button
             onClick={() => setModalTambahManual(true)}
@@ -342,6 +568,14 @@ export default function SiswaPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-slate-50">
                 <tr>
+                  <th className="w-10 px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                  </th>
                   <SortableTh label="Nama" sortKey="nama" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="NISN" sortKey="nisn" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Kelas" sortKey="kelas" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
@@ -354,13 +588,21 @@ export default function SiswaPage() {
               <tbody>
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
                       Data siswa tidak ditemukan
                     </td>
                   </tr>
                 ) : (
                   data.map((item) => (
                     <tr key={item.id_siswa} className="border-b last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id_siswa)}
+                          onChange={() => toggleSelect(item.id_siswa)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-800">
                           {item.nama_lengkap}
@@ -539,6 +781,35 @@ export default function SiswaPage() {
             fetchData()
           }}
         />
+      )}
+
+      {modalGantiStatus && (
+        <Modal title={`Ganti Status (${selected.size} siswa)`} onClose={() => !savingBulk && setModalGantiStatus(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Status Baru</label>
+              <select
+                value={statusBaru}
+                onChange={(e) => setStatusBaru(e.target.value as Siswa["status"])}
+                disabled={savingBulk}
+                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+              >
+                <option value="aktif">Aktif</option>
+                <option value="nonaktif">Non Aktif</option>
+                <option value="ppdb">PPDB</option>
+                <option value="keluar">Keluar</option>
+              </select>
+            </div>
+
+            <button
+              onClick={submitGantiStatus}
+              disabled={savingBulk}
+              className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {savingBulk ? "Menyimpan..." : "Terapkan"}
+            </button>
+          </div>
+        </Modal>
       )}
     </AppShell>
   )
