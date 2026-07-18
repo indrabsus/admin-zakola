@@ -126,6 +126,20 @@ export default function RiwayatKelasPage() {
   const [modalNaikKelas, setModalNaikKelas] = useState(false)
   const [modalKelasBaru, setModalKelasBaru] = useState(false)
   const [detailKelas, setDetailKelas] = useState<{ namaKelas: string; tingkat: string } | null>(null)
+  // Antrean kelas baru yang dibuat sekaligus (mis. tingkat 10, PPLG 1-4) -
+  // ditampilkan satu per satu lewat ModalDetailKelas yang sama, lanjut ke
+  // kelas berikutnya begitu satu kelas selesai/ditutup.
+  const [kelasBaruQueue, setKelasBaruQueue] = useState<{ namaKelas: string; tingkat: string }[]>([])
+
+  const closeDetailKelas = () => {
+    if (kelasBaruQueue.length > 0) {
+      const [next, ...rest] = kelasBaruQueue
+      setKelasBaruQueue(rest)
+      setDetailKelas(next)
+    } else {
+      setDetailKelas(null)
+    }
+  }
 
   const loadTahun = async () => {
     try {
@@ -357,7 +371,8 @@ export default function RiwayatKelasPage() {
           namaKelas={detailKelas.namaKelas}
           tingkat={detailKelas.tingkat}
           sudahMasuk={grouped[`${detailKelas.namaKelas}__${detailKelas.tingkat}`] || []}
-          onClose={() => setDetailKelas(null)}
+          sisaAntrean={kelasBaruQueue.length}
+          onClose={closeDetailKelas}
           onHapus={hapusRiwayat}
           onAssigned={() => fetchRiwayat(tahunAjaran)}
         />
@@ -366,9 +381,11 @@ export default function RiwayatKelasPage() {
       {modalKelasBaru && (
         <ModalKelasBaru
           onClose={() => setModalKelasBaru(false)}
-          onCreate={(namaKelas, tingkat) => {
+          onCreate={(classes) => {
             setModalKelasBaru(false)
-            setDetailKelas({ namaKelas, tingkat })
+            const [first, ...rest] = classes
+            setKelasBaruQueue(rest)
+            setDetailKelas(first)
           }}
         />
       )}
@@ -381,23 +398,49 @@ function ModalKelasBaru({
   onCreate,
 }: {
   onClose: () => void
-  onCreate: (namaKelas: string, tingkat: string) => void
+  onCreate: (classes: { namaKelas: string; tingkat: string }[]) => void
 }) {
-  const [namaKelas, setNamaKelas] = useState("")
   const [tingkat, setTingkat] = useState("")
+  const [namaKelas, setNamaKelas] = useState("")
+  const [bulk, setBulk] = useState(false)
+  const [dari, setDari] = useState("1")
+  const [sampai, setSampai] = useState("4")
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    const trimmedNama = namaKelas.trim()
     const trimmedTingkat = tingkat.trim()
+    const trimmedNama = namaKelas.trim()
 
-    if (!trimmedNama || !trimmedTingkat) {
+    if (!trimmedTingkat || !trimmedNama) {
       Swal.fire("Belum lengkap", "Tingkat dan nama kelas wajib diisi.", "warning")
       return
     }
 
-    onCreate(trimmedNama, trimmedTingkat)
+    if (!bulk) {
+      onCreate([{ namaKelas: trimmedNama, tingkat: trimmedTingkat }])
+      return
+    }
+
+    const from = Number(dari)
+    const to = Number(sampai)
+
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+      Swal.fire("Belum lengkap", "Rentang nomor kelas tidak valid.", "warning")
+      return
+    }
+
+    if (to - from + 1 > 50) {
+      Swal.fire("Terlalu banyak", "Maksimal 50 kelas sekaligus.", "warning")
+      return
+    }
+
+    const classes = Array.from({ length: to - from + 1 }, (_, i) => ({
+      namaKelas: `${trimmedNama} ${from + i}`,
+      tingkat: trimmedTingkat,
+    }))
+
+    onCreate(classes)
   }
 
   return (
@@ -415,14 +458,57 @@ function ModalKelasBaru({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm text-slate-600">Nama Kelas</label>
+          <label className="mb-1 block text-sm text-slate-600">
+            {bulk ? "Nama Dasar Kelas" : "Nama Kelas"}
+          </label>
           <input
             value={namaKelas}
             onChange={(e) => setNamaKelas(e.target.value)}
-            placeholder="Contoh: PPLG 1"
+            placeholder={bulk ? "Contoh: PPLG" : "Contoh: PPLG 1"}
             className="w-full rounded-xl border px-4 py-2"
           />
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={bulk}
+            onChange={(e) => setBulk(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Buat beberapa kelas sekaligus (mis. PPLG 1 - PPLG 4)
+        </label>
+
+        {bulk && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Dari Nomor</label>
+              <input
+                type="number"
+                min={1}
+                value={dari}
+                onChange={(e) => setDari(e.target.value)}
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Sampai Nomor</label>
+              <input
+                type="number"
+                min={1}
+                value={sampai}
+                onChange={(e) => setSampai(e.target.value)}
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+          </div>
+        )}
+
+        {bulk && namaKelas.trim() && (
+          <p className="text-xs text-slate-500">
+            Akan dibuat: {namaKelas.trim()} {dari} sampai {namaKelas.trim()} {sampai}
+          </p>
+        )}
 
         <p className="text-xs text-slate-500">
           Kelas akan langsung terbuka untuk mulai memasukkan siswa yang belum punya riwayat kelas di
@@ -751,6 +837,7 @@ function ModalDetailKelas({
   namaKelas,
   tingkat,
   sudahMasuk,
+  sisaAntrean = 0,
   onClose,
   onHapus,
   onAssigned,
@@ -759,6 +846,7 @@ function ModalDetailKelas({
   namaKelas: string
   tingkat: string
   sudahMasuk: Riwayat[]
+  sisaAntrean?: number
   onClose: () => void
   onHapus: (item: Riwayat) => void
   onAssigned: () => void
@@ -849,6 +937,15 @@ function ModalDetailKelas({
       onClose={onClose}
       maxWidth="max-w-2xl"
     >
+      {sisaAntrean > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-2 text-sm text-blue-700">
+          <span>{sisaAntrean} kelas lagi menunggu dibuka dari pembuatan kelas sekaligus.</span>
+          <button onClick={onClose} className="font-semibold underline">
+            Lanjut ke Kelas Berikutnya
+          </button>
+        </div>
+      )}
+
       <div className="mb-4 flex gap-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
         <button
           onClick={() => setTab("sudah")}
