@@ -1,3 +1,5 @@
+import { logout } from "@/lib/auth"
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 export const apiFetch = async (
@@ -26,6 +28,16 @@ export const apiFetch = async (
   const data = await res.json().catch(() => null)
 
   if (!res.ok) {
+    // Token expired/invalid: backend membalas 401 untuk sesi yang sudah tidak
+    // valid lagi - langsung logout & lempar ke login daripada membiarkan user
+    // terjebak di halaman yang terus gagal fetch.
+    if (res.status === 401 && typeof window !== "undefined") {
+      logout()
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login"
+      }
+    }
+
     throw new Error(data?.message || "Terjadi kesalahan")
   }
 
