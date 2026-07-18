@@ -77,6 +77,10 @@ type Siswa = {
   riwayat_kelas?: RiwayatKelasSiswa[]
 }
 
+// Nilai sentinel untuk opsi "Belum Ada Kelas" di filter kelas - dipilih agar
+// tidak mungkin bentrok dengan value asli "tingkat|nama_kelas".
+const BELUM_KELAS_VALUE = "__belum_kelas__"
+
 // Normalisasi kasar nomor HP Indonesia untuk indikator valid/tidak valid di
 // tabel - bukan validasi ketat, cuma penanda cepat sebelum kirim WA.
 const isValidNoHp = (value?: string | null) => {
@@ -211,7 +215,9 @@ export default function SiswaPage() {
       if (search) params.set("search", search)
       if (tahunAjaranFilter) {
         params.set("tahun_ajaran", tahunAjaranFilter)
-        if (kelasFilter) {
+        if (kelasFilter === BELUM_KELAS_VALUE) {
+          params.set("belum_kelas", "1")
+        } else if (kelasFilter) {
           // value dropdown kelas berformat "tingkat|nama_kelas" - nama_kelas saja
           // bisa dipakai ulang di tingkat berbeda (mis. "MPLB 1" di tingkat 11
           // dan 12), jadi tingkat wajib disertakan supaya filter tidak
@@ -747,6 +753,7 @@ export default function SiswaPage() {
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none disabled:opacity-60"
             >
               <option value="">Semua Kelas</option>
+              <option value={BELUM_KELAS_VALUE}>Belum Ada Kelas</option>
               {kelasRiwayatList.map((k) => (
                 <option key={`${k.tingkat}-${k.nama_kelas}`} value={`${k.tingkat}|${k.nama_kelas}`}>
                   {k.nama_kelas} (Tingkat {k.tingkat})
