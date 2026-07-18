@@ -2,11 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Swal from "sweetalert2"
-import { Edit, Eye, Loader2, Search, Trash2, UserPlus } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Edit,
+  Eye,
+  Loader2,
+  LogOut,
+  MessageCircle,
+  Move,
+  Search,
+  Trash2,
+  UserPlus,
+} from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
 import { apiFetch } from "@/lib/api"
+import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
 type KelasPpdb = {
   id_kelas: string
@@ -28,6 +41,13 @@ type KelasPilihan = {
 }
 
 type KelasRiwayat = {
+  tingkat: string
+  nama_kelas: string
+}
+
+type RiwayatKelasSiswa = {
+  id_riwayat: string
+  tahun_ajaran: string
   tingkat: string
   nama_kelas: string
 }
@@ -54,6 +74,17 @@ type Siswa = {
   bayar_daftar: "y" | "n" | "l"
   username: string
   siswa_baru?: SiswaBaru | null
+  riwayat_kelas?: RiwayatKelasSiswa[]
+}
+
+// Normalisasi kasar nomor HP Indonesia untuk indikator valid/tidak valid di
+// tabel - bukan validasi ketat, cuma penanda cepat sebelum kirim WA.
+const isValidNoHp = (value?: string | null) => {
+  if (!value) return false
+  const digits = value.replace(/[^0-9]/g, "")
+  if (digits.startsWith("62")) return digits.length >= 10 && digits.length <= 15
+  if (digits.startsWith("0")) return digits.length >= 9 && digits.length <= 14
+  return false
 }
 
 const statusLabel: Record<string, string> = {
@@ -133,6 +164,38 @@ export default function SiswaPage() {
 
   const [modalTambahManual, setModalTambahManual] = useState(false)
 
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null)
+  const [modalKirimWa, setModalKirimWa] = useState(false)
+  const [targetWa, setTargetWa] = useState<"siswa" | "ortu">("siswa")
+  const [pesanWa, setPesanWa] = useState("")
+  const [sendingWa, setSendingWa] = useState(false)
+  const [sendProgress, setSendProgress] = useState({ done: 0, total: 0 })
+
+  const [editNoHp, setEditNoHp] = useState<{
+    item: Siswa
+    field: "no_hp" | "no_hp_ortu"
+    label: string
+  } | null>(null)
+  const [noHpValue, setNoHpValue] = useState("")
+  const [savingNoHp, setSavingNoHp] = useState(false)
+
+  const [pindahKelasItem, setPindahKelasItem] = useState<Siswa | null>(null)
+
+  useEffect(() => {
+    const loadWaStatus = async () => {
+      try {
+        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        setWaStatus(res.data.status)
+      } catch {
+        setWaStatus(null)
+      }
+    }
+
+    loadWaStatus()
+    const interval = setInterval(loadWaStatus, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
   const fetchData = async () => {
     try {
       setLoading(true)
@@ -146,9 +209,17 @@ export default function SiswaPage() {
       if (tahun) params.set("tahun", tahun)
       if (status) params.set("status", status)
       if (search) params.set("search", search)
-      if (kelasFilter && tahunAjaranFilter) {
+      if (tahunAjaranFilter) {
         params.set("tahun_ajaran", tahunAjaranFilter)
-        params.set("kelas", kelasFilter)
+        if (kelasFilter) {
+          // value dropdown kelas berformat "tingkat|nama_kelas" - nama_kelas saja
+          // bisa dipakai ulang di tingkat berbeda (mis. "MPLB 1" di tingkat 11
+          // dan 12), jadi tingkat wajib disertakan supaya filter tidak
+          // menyatukan siswa dari dua kelas yang beda tingkat.
+          const separatorIndex = kelasFilter.indexOf("|")
+          params.set("tingkat", kelasFilter.slice(0, separatorIndex))
+          params.set("kelas", kelasFilter.slice(separatorIndex + 1))
+        }
       }
 
       const res = await apiFetch(`/siswa/master?${params.toString()}`)
@@ -417,6 +488,183 @@ export default function SiswaPage() {
     }
   }
 
+  const openEditNoHp = (item: Siswa, field: "no_hp" | "no_hp_ortu", label: string) => {
+    setEditNoHp({ item, field, label })
+    setNoHpValue(item[field] || "")
+  }
+
+  const submitEditNoHp = async () => {
+    if (!editNoHp) return
+
+    try {
+      setSavingNoHp(true)
+
+      await apiFetch("/ppdb/updatesiswa", {
+        method: "PUT",
+        body: JSON.stringify({
+          id_siswa: editNoHp.item.id_siswa,
+          [editNoHp.field]: noHpValue.trim(),
+        }),
+      })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: `${editNoHp.label} berhasil diperbarui`,
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      })
+
+      setEditNoHp(null)
+      fetchData()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSavingNoHp(false)
+    }
+  }
+
+  const hapusNoHp = async () => {
+    if (!editNoHp) return
+
+    const confirm = await Swal.fire({
+      title: "Hapus Nomor?",
+      text: `${editNoHp.label} untuk ${editNoHp.item.nama_lengkap} akan dikosongkan.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#dc2626",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setSavingNoHp(true)
+
+      await apiFetch("/ppdb/updatesiswa", {
+        method: "PUT",
+        body: JSON.stringify({ id_siswa: editNoHp.item.id_siswa, [editNoHp.field]: "" }),
+      })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: `${editNoHp.label} berhasil dihapus`,
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      })
+
+      setEditNoHp(null)
+      fetchData()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSavingNoHp(false)
+    }
+  }
+
+  const openKirimWa = () => {
+    setTargetWa("siswa")
+    setPesanWa("")
+    setModalKirimWa(true)
+  }
+
+  const kirimWa = async () => {
+    if (!pesanWa.trim()) {
+      Swal.fire({ icon: "warning", title: "Pesan Kosong", text: "Isi pesan terlebih dahulu." })
+      return
+    }
+
+    const terpilih = data.filter((item) => selected.has(item.id_siswa))
+    const penerima = terpilih.filter((item) => isValidNoHp(targetWa === "siswa" ? item.no_hp : item.no_hp_ortu))
+
+    if (penerima.length === 0) {
+      Swal.fire({
+        icon: "warning",
+        title: "Tidak Ada Nomor Valid",
+        text: `Tidak ada nomor WA ${targetWa === "siswa" ? "siswa" : "orang tua"} yang valid dari siswa terpilih.`,
+      })
+      return
+    }
+
+    setSendingWa(true)
+    setSendProgress({ done: 0, total: penerima.length })
+
+    const gagal: string[] = []
+
+    for (const item of penerima) {
+      try {
+        await apiFetch("/wa/kirim", {
+          method: "POST",
+          body: JSON.stringify({
+            nomor: targetWa === "siswa" ? item.no_hp : item.no_hp_ortu,
+            pesan: pesanWa,
+          }),
+        })
+      } catch {
+        gagal.push(item.nama_lengkap)
+      }
+
+      setSendProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+      await new Promise((resolve) => setTimeout(resolve, 800))
+    }
+
+    setSendingWa(false)
+    setModalKirimWa(false)
+    setSelected(new Set())
+
+    const dilewati = terpilih.length - penerima.length
+    const dilewatiText = dilewati > 0 ? ` (${dilewati} dilewati karena nomor tidak valid)` : ""
+
+    if (gagal.length === 0) {
+      Swal.fire({
+        icon: "success",
+        title: "Terkirim",
+        text: `Pesan berhasil dikirim ke ${penerima.length} penerima${dilewatiText}.`,
+      })
+    } else {
+      Swal.fire({
+        icon: "warning",
+        title: "Sebagian Gagal",
+        html: `Terkirim ${penerima.length - gagal.length} dari ${penerima.length}${dilewatiText}.<br/>Gagal: ${gagal.join(", ")}`,
+      })
+    }
+  }
+
+  const keluarkanDariKelas = async (item: Siswa) => {
+    const current = item.riwayat_kelas?.[0]
+    if (!current) return
+
+    const confirm = await Swal.fire({
+      title: "Keluarkan dari Kelas?",
+      text: `${item.nama_lengkap} akan dikeluarkan dari kelas ${current.nama_kelas} (${current.tahun_ajaran}).`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Keluarkan",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#dc2626",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      await apiFetch(`/riwayat-kelas/${current.id_riwayat}`, { method: "DELETE" })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: "Siswa berhasil dikeluarkan dari kelas.",
+        icon: "success",
+        timer: 1200,
+        showConfirmButton: false,
+      })
+
+      fetchData()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    }
+  }
+
   const tahunOptions = useMemo(() => {
     const now = new Date().getFullYear()
     return Array.from({ length: 8 }, (_, i) => now - 5 + i)
@@ -500,7 +748,7 @@ export default function SiswaPage() {
             >
               <option value="">Semua Kelas</option>
               {kelasRiwayatList.map((k) => (
-                <option key={k.nama_kelas} value={k.nama_kelas}>
+                <option key={`${k.tingkat}-${k.nama_kelas}`} value={`${k.tingkat}|${k.nama_kelas}`}>
                   {k.nama_kelas} (Tingkat {k.tingkat})
                 </option>
               ))}
@@ -539,6 +787,22 @@ export default function SiswaPage() {
           >
             <Trash2 size={16} />
             Hapus{selected.size > 0 ? ` (${selected.size})` : ""}
+          </button>
+
+          <button
+            onClick={openKirimWa}
+            disabled={selected.size === 0 || waStatus !== "ready"}
+            title={
+              waStatus !== "ready"
+                ? "Server WhatsApp tidak terhubung"
+                : selected.size === 0
+                ? "Pilih minimal satu siswa"
+                : undefined
+            }
+            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <MessageCircle size={16} />
+            Kirim WA{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
 
           <button
@@ -608,12 +872,27 @@ export default function SiswaPage() {
                           {item.nama_lengkap}
                         </div>
                         <div className="text-xs text-slate-500">{item.username}</div>
+
+                        <div className="mt-1 space-y-0.5">
+                          <NoHpRow
+                            label="Siswa"
+                            value={item.no_hp}
+                            onClick={() => openEditNoHp(item, "no_hp", "No HP Siswa")}
+                          />
+                          <NoHpRow
+                            label="Ortu"
+                            value={item.no_hp_ortu}
+                            onClick={() => openEditNoHp(item, "no_hp_ortu", "No HP Orang Tua")}
+                          />
+                        </div>
                       </td>
 
                       <td className="px-4 py-3">{item.nisn}</td>
 
                       <td className="px-4 py-3">
-                        {item.siswa_baru?.kelas_ppdb?.nama_kelas || "-"}
+                        {item.riwayat_kelas?.[0]
+                          ? `${item.riwayat_kelas[0].nama_kelas} (Tingkat ${item.riwayat_kelas[0].tingkat})`
+                          : "-"}
                       </td>
 
                       <td className="px-4 py-3">{item.tahun}</td>
@@ -644,6 +923,27 @@ export default function SiswaPage() {
                             className="border-r px-3 py-2 text-amber-600 hover:bg-amber-50"
                           >
                             <Edit size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => setPindahKelasItem(item)}
+                            title="Pindah kelas"
+                            className="border-r px-3 py-2 text-indigo-600 hover:bg-indigo-50"
+                          >
+                            <Move size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => keluarkanDariKelas(item)}
+                            disabled={!item.riwayat_kelas?.[0]}
+                            title={
+                              item.riwayat_kelas?.[0]
+                                ? "Keluarkan dari kelas"
+                                : "Siswa belum masuk kelas di tahun ajaran ini"
+                            }
+                            className="border-r px-3 py-2 text-orange-600 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            <LogOut size={16} />
                           </button>
 
                           <button
@@ -811,7 +1111,171 @@ export default function SiswaPage() {
           </div>
         </Modal>
       )}
+
+      {editNoHp && (
+        <Modal
+          title={`Edit ${editNoHp.label} - ${editNoHp.item.nama_lengkap}`}
+          onClose={() => !savingNoHp && setEditNoHp(null)}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">{editNoHp.label}</label>
+              <input
+                value={noHpValue}
+                onChange={(e) => setNoHpValue(e.target.value)}
+                placeholder="Contoh: 081234567890"
+                disabled={savingNoHp}
+                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={submitEditNoHp}
+                disabled={savingNoHp}
+                className="flex-1 rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {savingNoHp ? "Menyimpan..." : "Simpan"}
+              </button>
+
+              <button
+                onClick={hapusNoHp}
+                disabled={savingNoHp || !editNoHp.item[editNoHp.field]}
+                title={!editNoHp.item[editNoHp.field] ? "Nomor sudah kosong" : undefined}
+                className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <Trash2 size={16} />
+                Hapus
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {modalKirimWa && (
+        <Modal title="Kirim WhatsApp" onClose={() => !sendingWa && setModalKirimWa(false)}>
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1 text-sm text-slate-600">Kirim Ke</p>
+              <div className="flex gap-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setTargetWa("siswa")}
+                  disabled={sendingWa}
+                  className={`flex-1 rounded-lg py-2 transition ${
+                    targetWa === "siswa" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  Siswa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetWa("ortu")}
+                  disabled={sendingWa}
+                  className={`flex-1 rounded-lg py-2 transition ${
+                    targetWa === "ortu" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  Orang Tua
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-sm text-slate-600">Penerima ({selected.size} dipilih)</p>
+              <div className="max-h-28 overflow-y-auto rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">
+                {data
+                  .filter((item) => selected.has(item.id_siswa))
+                  .map((item) => {
+                    const nomor = targetWa === "siswa" ? item.no_hp : item.no_hp_ortu
+                    const valid = isValidNoHp(nomor)
+                    return (
+                      <div key={item.id_siswa} className={valid ? "" : "text-red-500 line-through"}>
+                        {item.nama_lengkap}
+                        {!valid && " (nomor tidak valid)"}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Pesan</label>
+              <textarea
+                value={pesanWa}
+                onChange={(e) => setPesanWa(e.target.value)}
+                rows={5}
+                disabled={sendingWa}
+                placeholder="Tulis pesan yang akan dikirim..."
+                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+              />
+            </div>
+
+            <button
+              onClick={kirimWa}
+              disabled={sendingWa}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {sendingWa ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Mengirim {sendProgress.done}/{sendProgress.total}...
+                </>
+              ) : (
+                <>
+                  <MessageCircle size={16} />
+                  Kirim
+                </>
+              )}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {pindahKelasItem && (
+        <ModalPindahKelas
+          siswa={pindahKelasItem}
+          tahunAjaranList={tahunAjaranList}
+          defaultTahunAjaran={tahunAjaranFilter}
+          onClose={() => setPindahKelasItem(null)}
+          onSuccess={() => {
+            setPindahKelasItem(null)
+            fetchData()
+          }}
+        />
+      )}
     </AppShell>
+  )
+}
+
+function NoHpRow({
+  label,
+  value,
+  onClick,
+}: {
+  label: string
+  value?: string | null
+  onClick: () => void
+}) {
+  const valid = isValidNoHp(value)
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Klik untuk edit/hapus No HP ${label}`}
+      className="flex w-full cursor-pointer items-center gap-1 text-left text-xs text-slate-500 hover:text-blue-600 hover:underline"
+    >
+      {valid ? (
+        <CheckCircle2 size={12} className="shrink-0 fill-green-600 text-white" />
+      ) : (
+        <AlertTriangle size={12} className="shrink-0 text-red-500" />
+      )}
+      <span>
+        {label}: {value || "-"}
+      </span>
+    </button>
   )
 }
 
@@ -845,6 +1309,119 @@ function InputField({
         className="w-full rounded-xl border px-4 py-2"
       />
     </div>
+  )
+}
+
+function ModalPindahKelas({
+  siswa,
+  tahunAjaranList,
+  defaultTahunAjaran,
+  onClose,
+  onSuccess,
+}: {
+  siswa: Siswa
+  tahunAjaranList: string[]
+  defaultTahunAjaran: string
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const kelasSaatIni = siswa.riwayat_kelas?.[0]
+
+  const [tahunAjaran, setTahunAjaran] = useState(defaultTahunAjaran || kelasSaatIni?.tahun_ajaran || "")
+  const [tingkat, setTingkat] = useState(kelasSaatIni?.tingkat || "")
+  const [namaKelas, setNamaKelas] = useState(kelasSaatIni?.nama_kelas || "")
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    if (!tahunAjaran.trim() || !tingkat.trim() || !namaKelas.trim()) {
+      Swal.fire("Belum lengkap", "Tahun ajaran, tingkat, dan nama kelas wajib diisi.", "warning")
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      await apiFetch("/riwayat-kelas/pindah", {
+        method: "POST",
+        body: JSON.stringify({
+          id_siswa: siswa.id_siswa,
+          tahun_ajaran: tahunAjaran.trim(),
+          tingkat: tingkat.trim(),
+          nama_kelas: namaKelas.trim(),
+        }),
+      })
+
+      await Swal.fire({
+        title: "Berhasil",
+        text: `${siswa.nama_lengkap} dipindahkan ke kelas ${namaKelas} (${tahunAjaran}).`,
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      })
+
+      onSuccess()
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Pindah Kelas - ${siswa.nama_lengkap}`} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-4">
+        {kelasSaatIni && (
+          <p className="rounded-xl bg-slate-50 px-4 py-2 text-sm text-slate-500">
+            Kelas saat ini: <b>{kelasSaatIni.nama_kelas}</b> (Tingkat {kelasSaatIni.tingkat}) - {kelasSaatIni.tahun_ajaran}
+          </p>
+        )}
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Tahun Ajaran</label>
+          <input
+            value={tahunAjaran}
+            onChange={(e) => setTahunAjaran(e.target.value)}
+            list="tahun-ajaran-options"
+            placeholder="Contoh: 2026/2027"
+            className="w-full rounded-xl border px-4 py-2"
+          />
+          <datalist id="tahun-ajaran-options">
+            {tahunAjaranList.map((ta) => (
+              <option key={ta} value={ta} />
+            ))}
+          </datalist>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Tingkat</label>
+          <input
+            value={tingkat}
+            onChange={(e) => setTingkat(e.target.value)}
+            placeholder="Contoh: 11"
+            className="w-full rounded-xl border px-4 py-2"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm text-slate-600">Nama Kelas</label>
+          <input
+            value={namaKelas}
+            onChange={(e) => setNamaKelas(e.target.value)}
+            placeholder="Contoh: PPLG 1"
+            className="w-full rounded-xl border px-4 py-2"
+          />
+        </div>
+
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+        >
+          <Move size={16} />
+          {saving ? "Memindahkan..." : "Pindahkan"}
+        </button>
+      </div>
+    </Modal>
   )
 }
 
