@@ -1338,6 +1338,29 @@ function ModalPindahKelas({
   const [tingkat, setTingkat] = useState(kelasSaatIni?.tingkat || "")
   const [namaKelas, setNamaKelas] = useState(kelasSaatIni?.nama_kelas || "")
   const [saving, setSaving] = useState(false)
+  const [kelasOptions, setKelasOptions] = useState<KelasRiwayat[]>([])
+
+  // Siswa yang belum punya kelas di tahun ajaran manapun mulai dengan
+  // Tingkat/Nama Kelas kosong (tidak ada yang bisa diprefill dari
+  // kelasSaatIni) - opsi ini dimuat supaya admin tinggal pilih dari kelas
+  // yang sudah ada di tahun ajaran tersebut, bukan mengetik manual dari nol.
+  useEffect(() => {
+    const loadKelasOptions = async () => {
+      if (!tahunAjaran.trim()) {
+        setKelasOptions([])
+        return
+      }
+
+      try {
+        const res = await apiFetch(`/riwayat-kelas/kelas-list?tahun_ajaran=${encodeURIComponent(tahunAjaran.trim())}`)
+        setKelasOptions(Array.isArray(res.data) ? res.data : [])
+      } catch {
+        setKelasOptions([])
+      }
+    }
+
+    loadKelasOptions()
+  }, [tahunAjaran])
 
   const submit = async () => {
     if (!tahunAjaran.trim() || !tingkat.trim() || !namaKelas.trim()) {
@@ -1404,9 +1427,15 @@ function ModalPindahKelas({
           <input
             value={tingkat}
             onChange={(e) => setTingkat(e.target.value)}
+            list="tingkat-options"
             placeholder="Contoh: 11"
             className="w-full rounded-xl border px-4 py-2"
           />
+          <datalist id="tingkat-options">
+            {Array.from(new Set(kelasOptions.map((k) => k.tingkat))).map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </div>
 
         <div>
@@ -1414,9 +1443,17 @@ function ModalPindahKelas({
           <input
             value={namaKelas}
             onChange={(e) => setNamaKelas(e.target.value)}
+            list="nama-kelas-options"
             placeholder="Contoh: PPLG 1"
             className="w-full rounded-xl border px-4 py-2"
           />
+          <datalist id="nama-kelas-options">
+            {kelasOptions
+              .filter((k) => !tingkat.trim() || k.tingkat === tingkat.trim())
+              .map((k) => (
+                <option key={`${k.tingkat}-${k.nama_kelas}`} value={k.nama_kelas} />
+              ))}
+          </datalist>
         </div>
 
         <button
