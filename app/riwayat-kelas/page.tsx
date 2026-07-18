@@ -380,9 +380,17 @@ export default function RiwayatKelasPage() {
 
       {modalKelasBaru && (
         <ModalKelasBaru
+          tahunAjaranAwal={tahunAjaran}
+          daftarTahun={daftarTahun}
           onClose={() => setModalKelasBaru(false)}
-          onCreate={(classes) => {
+          onCreate={(tahunAjaranBaru, classes) => {
             setModalKelasBaru(false)
+
+            if (!daftarTahun.includes(tahunAjaranBaru)) {
+              setDaftarTahun((prev) => [tahunAjaranBaru, ...prev].sort().reverse())
+            }
+            setTahunAjaran(tahunAjaranBaru)
+
             const [first, ...rest] = classes
             setKelasBaruQueue(rest)
             setDetailKelas(first)
@@ -394,12 +402,17 @@ export default function RiwayatKelasPage() {
 }
 
 function ModalKelasBaru({
+  tahunAjaranAwal,
+  daftarTahun,
   onClose,
   onCreate,
 }: {
+  tahunAjaranAwal: string
+  daftarTahun: string[]
   onClose: () => void
-  onCreate: (classes: { namaKelas: string; tingkat: string }[]) => void
+  onCreate: (tahunAjaran: string, classes: { namaKelas: string; tingkat: string }[]) => void
 }) {
+  const [tahunAjaran, setTahunAjaran] = useState(tahunAjaranAwal)
   const [tingkat, setTingkat] = useState("")
   const [namaKelas, setNamaKelas] = useState("")
   const [bulk, setBulk] = useState(false)
@@ -409,16 +422,17 @@ function ModalKelasBaru({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
 
+    const trimmedTahunAjaran = tahunAjaran.trim()
     const trimmedTingkat = tingkat.trim()
     const trimmedNama = namaKelas.trim()
 
-    if (!trimmedTingkat || !trimmedNama) {
-      Swal.fire("Belum lengkap", "Tingkat dan nama kelas wajib diisi.", "warning")
+    if (!trimmedTahunAjaran || !trimmedTingkat || !trimmedNama) {
+      Swal.fire("Belum lengkap", "Tahun ajaran, tingkat, dan nama kelas wajib diisi.", "warning")
       return
     }
 
     if (!bulk) {
-      onCreate([{ namaKelas: trimmedNama, tingkat: trimmedTingkat }])
+      onCreate(trimmedTahunAjaran, [{ namaKelas: trimmedNama, tingkat: trimmedTingkat }])
       return
     }
 
@@ -440,19 +454,39 @@ function ModalKelasBaru({
       tingkat: trimmedTingkat,
     }))
 
-    onCreate(classes)
+    onCreate(trimmedTahunAjaran, classes)
   }
 
   return (
     <Modal title="Buat Kelas Baru" onClose={onClose} maxWidth="max-w-md">
       <form onSubmit={submit} className="space-y-4">
         <div>
+          <label className="mb-1 block text-sm text-slate-600">Tahun Ajaran</label>
+          <input
+            value={tahunAjaran}
+            onChange={(e) => setTahunAjaran(e.target.value)}
+            list="tahun-ajaran-kelas-baru-options"
+            placeholder="Contoh: 2027/2028"
+            autoFocus
+            className="w-full rounded-xl border px-4 py-2"
+          />
+          <datalist id="tahun-ajaran-kelas-baru-options">
+            {daftarTahun.map((ta) => (
+              <option key={ta} value={ta} />
+            ))}
+          </datalist>
+          <p className="mt-1 text-xs text-slate-500">
+            Ketik tahun ajaran baru di sini kalau belum ada di daftar - akan otomatis dipakai begitu kelas
+            ini dibuat.
+          </p>
+        </div>
+
+        <div>
           <label className="mb-1 block text-sm text-slate-600">Tingkat</label>
           <input
             value={tingkat}
             onChange={(e) => setTingkat(e.target.value)}
             placeholder="Contoh: 10"
-            autoFocus
             className="w-full rounded-xl border px-4 py-2"
           />
         </div>
