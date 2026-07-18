@@ -142,6 +142,7 @@ export default function SiswaPage() {
   const [savingBulk, setSavingBulk] = useState(false)
 
   const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(20)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
 
@@ -207,7 +208,7 @@ export default function SiswaPage() {
 
       const params = new URLSearchParams()
       params.set("page", String(page))
-      params.set("limit", "20")
+      params.set("limit", String(limit))
       params.set("sort_by", sortBy)
       params.set("sort_dir", sortDir)
       if (tahun) params.set("tahun", tahun)
@@ -244,7 +245,7 @@ export default function SiswaPage() {
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, tahun, status, search, sortBy, sortDir, kelasFilter, tahunAjaranFilter])
+  }, [page, limit, tahun, status, search, sortBy, sortDir, kelasFilter, tahunAjaranFilter])
 
   useEffect(() => {
     const loadTahunAjaran = async () => {
@@ -970,28 +971,47 @@ export default function SiswaPage() {
           </div>
         )}
 
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
-            <span className="text-slate-500">
-              Halaman {page} dari {totalPages}
-            </span>
+        {!loading && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">
+                {totalPages > 1 ? `Halaman ${page} dari ${totalPages}` : `${total} data`}
+              </span>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="rounded-lg border px-3 py-1 disabled:opacity-50"
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setPage(1)
+                  setLimit(Number(e.target.value))
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none"
               >
-                Sebelumnya
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="rounded-lg border px-3 py-1 disabled:opacity-50"
-              >
-                Berikutnya
-              </button>
+                {[20, 50, 100, 250, 500, 1000].map((n) => (
+                  <option key={n} value={n}>
+                    {n} / halaman
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                >
+                  Sebelumnya
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
