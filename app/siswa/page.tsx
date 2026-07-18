@@ -891,7 +891,7 @@ export default function SiswaPage() {
 
                       <td className="px-4 py-3">
                         {item.riwayat_kelas?.[0]
-                          ? `${item.riwayat_kelas[0].nama_kelas} (Tingkat ${item.riwayat_kelas[0].tingkat})`
+                          ? `${item.riwayat_kelas[0].tingkat} ${item.riwayat_kelas[0].nama_kelas}`
                           : "-"}
                       </td>
 
