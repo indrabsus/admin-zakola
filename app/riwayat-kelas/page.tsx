@@ -126,7 +126,20 @@ export default function RiwayatKelasPage() {
   const [modalNaikKelas, setModalNaikKelas] = useState(false)
   const [modalKelasBaru, setModalKelasBaru] = useState(false)
   const [detailKelas, setDetailKelas] = useState<{ namaKelas: string; tingkat: string } | null>(null)
-  const [kelasList, setKelasList] = useState<{ tingkat: string; nama_kelas: string }[]>([])
+  // Antrean kelas baru yang dibuat sekaligus (mis. tingkat 10, PPLG 1-4) -
+  // ditampilkan satu per satu lewat ModalDetailKelas yang sama, lanjut ke
+  // kelas berikutnya begitu satu kelas selesai/ditutup.
+  const [kelasBaruQueue, setKelasBaruQueue] = useState<{ namaKelas: string; tingkat: string }[]>([])
+
+  const closeDetailKelas = () => {
+    if (kelasBaruQueue.length > 0) {
+      const [next, ...rest] = kelasBaruQueue
+      setKelasBaruQueue(rest)
+      setDetailKelas(next)
+    } else {
+      setDetailKelas(null)
+    }
+  }
 
   const loadTahun = async () => {
     try {
@@ -139,7 +152,7 @@ export default function RiwayatKelasPage() {
       setDaftarTahun(list)
 
       const aktif = aktifRes.data?.tahun_ajaran
-      setTahunAjaran((prev) => prev || aktif || list[0] || "")
+      setTahunAjaran(aktif || list[0] || "")
     } catch (err) {
       Swal.fire("Error", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
     }
@@ -148,24 +161,14 @@ export default function RiwayatKelasPage() {
   const fetchRiwayat = async (ta: string) => {
     if (!ta) {
       setData([])
-      setKelasList([])
       setLoading(false)
       return
     }
 
     try {
       setLoading(true)
-
-      const [riwayatRes, kelasListRes] = await Promise.all([
-        apiFetch(`/riwayat-kelas/tahun?tahun_ajaran=${encodeURIComponent(ta)}`),
-        apiFetch(`/riwayat-kelas/kelas-list?tahun_ajaran=${encodeURIComponent(ta)}`),
-      ])
-
-      setData(Array.isArray(riwayatRes.data) ? riwayatRes.data : [])
-      // kelas-list menyertakan kelas yang belum ada siswanya sama sekali
-      // (dibuat lewat "Kelas Baru" tapi belum diisi) - data riwayat saja
-      // tidak akan pernah menyebutkan kelas semacam ini.
-      setKelasList(Array.isArray(kelasListRes.data) ? kelasListRes.data : [])
+      const res = await apiFetch(`/riwayat-kelas/tahun?tahun_ajaran=${encodeURIComponent(ta)}`)
+      setData(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
       Swal.fire("Error", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
     } finally {
@@ -181,40 +184,6 @@ export default function RiwayatKelasPage() {
     fetchRiwayat(tahunAjaran)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tahunAjaran])
-
-  const tambahTahunAjaran = async () => {
-    const { value: input } = await Swal.fire({
-      title: "Tambah Tahun Ajaran",
-      input: "text",
-      inputLabel: "Contoh: 2027/2028",
-      inputPlaceholder: "2027/2028",
-      showCancelButton: true,
-      confirmButtonText: "Tambah",
-      cancelButtonText: "Batal",
-      inputValidator: (value) => {
-        if (!value || !value.trim()) return "Tahun ajaran wajib diisi."
-        return undefined
-      },
-    })
-
-    if (!input) return
-
-    const trimmed = input.trim()
-
-    if (!daftarTahun.includes(trimmed)) {
-      setDaftarTahun((prev) => [trimmed, ...prev].sort().reverse())
-    }
-
-    setTahunAjaran(trimmed)
-
-    Swal.fire({
-      title: "Tahun Ajaran Dipilih",
-      html: `Tahun ajaran <b>${trimmed}</b> akan tersimpan permanen begitu Anda membuat kelas pertama lewat tombol "Kelas Baru".`,
-      icon: "info",
-      timer: 2500,
-      showConfirmButton: false,
-    })
-  }
 
   const hapusRiwayat = async (item: Riwayat) => {
     const confirm = await Swal.fire({
@@ -253,20 +222,11 @@ export default function RiwayatKelasPage() {
     return acc
   }, {})
 
-  const kelasDenganSiswa = Object.values(grouped).map((rows) => ({
+  const kelasSummary = Object.values(grouped).map((rows) => ({
     namaKelas: rows[0]?.nama_kelas || "-",
     tingkat: rows[0]?.tingkat || "",
     jumlah: rows.length,
   }))
-
-  // Kelas yang sudah dibuat (lewat "Kelas Baru") tapi belum ada satu pun
-  // siswa masuk tidak muncul di `grouped` (asalnya dari riwayat_kelas) -
-  // ditambahkan di sini dengan jumlah 0 supaya tetap terlihat di tabel.
-  const kelasKosong = kelasList
-    .filter((k) => !kelasDenganSiswa.some((s) => s.namaKelas === k.nama_kelas && s.tingkat === k.tingkat))
-    .map((k) => ({ namaKelas: k.nama_kelas, tingkat: k.tingkat, jumlah: 0 }))
-
-  const kelasSummary = [...kelasDenganSiswa, ...kelasKosong]
 
   const { sorted: sortedKelasSummary, sortKey, sortDir, toggleSort } = useSort(
     kelasSummary,
@@ -305,14 +265,6 @@ export default function RiwayatKelasPage() {
               </option>
             ))}
           </select>
-
-          <button
-            onClick={tambahTahunAjaran}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Plus size={16} />
-            Tambah Tahun Ajaran
-          </button>
 
           <button
             onClick={() => setModalKelasBaru(true)}
@@ -419,7 +371,8 @@ export default function RiwayatKelasPage() {
           namaKelas={detailKelas.namaKelas}
           tingkat={detailKelas.tingkat}
           sudahMasuk={grouped[`${detailKelas.namaKelas}__${detailKelas.tingkat}`] || []}
-          onClose={() => setDetailKelas(null)}
+          sisaAntrean={kelasBaruQueue.length}
+          onClose={closeDetailKelas}
           onHapus={hapusRiwayat}
           onAssigned={() => fetchRiwayat(tahunAjaran)}
         />
@@ -427,12 +380,12 @@ export default function RiwayatKelasPage() {
 
       {modalKelasBaru && (
         <ModalKelasBaru
-          tahunAjaran={tahunAjaran}
           onClose={() => setModalKelasBaru(false)}
-          onSuccess={() => {
+          onCreate={(classes) => {
             setModalKelasBaru(false)
-            loadTahun()
-            fetchRiwayat(tahunAjaran)
+            const [first, ...rest] = classes
+            setKelasBaruQueue(rest)
+            setDetailKelas(first)
           }}
         />
       )}
@@ -441,22 +394,19 @@ export default function RiwayatKelasPage() {
 }
 
 function ModalKelasBaru({
-  tahunAjaran,
   onClose,
-  onSuccess,
+  onCreate,
 }: {
-  tahunAjaran: string
   onClose: () => void
-  onSuccess: () => void
+  onCreate: (classes: { namaKelas: string; tingkat: string }[]) => void
 }) {
   const [tingkat, setTingkat] = useState("")
   const [namaKelas, setNamaKelas] = useState("")
   const [bulk, setBulk] = useState(false)
   const [dari, setDari] = useState("1")
   const [sampai, setSampai] = useState("4")
-  const [saving, setSaving] = useState(false)
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
 
     const trimmedTingkat = tingkat.trim()
@@ -467,64 +417,30 @@ function ModalKelasBaru({
       return
     }
 
-    let classes: { namaKelas: string; tingkat: string }[]
-
     if (!bulk) {
-      classes = [{ namaKelas: trimmedNama, tingkat: trimmedTingkat }]
-    } else {
-      const from = Number(dari)
-      const to = Number(sampai)
-
-      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
-        Swal.fire("Belum lengkap", "Rentang nomor kelas tidak valid.", "warning")
-        return
-      }
-
-      if (to - from + 1 > 50) {
-        Swal.fire("Terlalu banyak", "Maksimal 50 kelas sekaligus.", "warning")
-        return
-      }
-
-      classes = Array.from({ length: to - from + 1 }, (_, i) => ({
-        namaKelas: `${trimmedNama} ${from + i}`,
-        tingkat: trimmedTingkat,
-      }))
+      onCreate([{ namaKelas: trimmedNama, tingkat: trimmedTingkat }])
+      return
     }
 
-    try {
-      setSaving(true)
+    const from = Number(dari)
+    const to = Number(sampai)
 
-      const results = await Promise.allSettled(
-        classes.map((k) =>
-          apiFetch("/riwayat-kelas/kelas", {
-            method: "POST",
-            body: JSON.stringify({ tahun_ajaran: tahunAjaran, tingkat: k.tingkat, nama_kelas: k.namaKelas }),
-          })
-        )
-      )
-
-      const gagal = results.filter((r) => r.status === "rejected").length
-
-      if (gagal === 0) {
-        await Swal.fire({
-          title: "Berhasil",
-          text: `${classes.length} kelas berhasil dibuat untuk tahun ajaran ${tahunAjaran}.`,
-          icon: "success",
-          timer: 1500,
-          showConfirmButton: false,
-        })
-      } else {
-        await Swal.fire({
-          title: "Sebagian Gagal",
-          text: `${classes.length - gagal} dari ${classes.length} kelas berhasil dibuat, ${gagal} gagal.`,
-          icon: "warning",
-        })
-      }
-
-      onSuccess()
-    } finally {
-      setSaving(false)
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+      Swal.fire("Belum lengkap", "Rentang nomor kelas tidak valid.", "warning")
+      return
     }
+
+    if (to - from + 1 > 50) {
+      Swal.fire("Terlalu banyak", "Maksimal 50 kelas sekaligus.", "warning")
+      return
+    }
+
+    const classes = Array.from({ length: to - from + 1 }, (_, i) => ({
+      namaKelas: `${trimmedNama} ${from + i}`,
+      tingkat: trimmedTingkat,
+    }))
+
+    onCreate(classes)
   }
 
   return (
@@ -536,9 +452,8 @@ function ModalKelasBaru({
             value={tingkat}
             onChange={(e) => setTingkat(e.target.value)}
             placeholder="Contoh: 10"
-            disabled={saving}
             autoFocus
-            className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+            className="w-full rounded-xl border px-4 py-2"
           />
         </div>
 
@@ -550,8 +465,7 @@ function ModalKelasBaru({
             value={namaKelas}
             onChange={(e) => setNamaKelas(e.target.value)}
             placeholder={bulk ? "Contoh: PPLG" : "Contoh: PPLG 1"}
-            disabled={saving}
-            className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+            className="w-full rounded-xl border px-4 py-2"
           />
         </div>
 
@@ -560,7 +474,6 @@ function ModalKelasBaru({
             type="checkbox"
             checked={bulk}
             onChange={(e) => setBulk(e.target.checked)}
-            disabled={saving}
             className="h-4 w-4 rounded border-slate-300"
           />
           Buat beberapa kelas sekaligus (mis. PPLG 1 - PPLG 4)
@@ -575,8 +488,7 @@ function ModalKelasBaru({
                 min={1}
                 value={dari}
                 onChange={(e) => setDari(e.target.value)}
-                disabled={saving}
-                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+                className="w-full rounded-xl border px-4 py-2"
               />
             </div>
             <div>
@@ -586,8 +498,7 @@ function ModalKelasBaru({
                 min={1}
                 value={sampai}
                 onChange={(e) => setSampai(e.target.value)}
-                disabled={saving}
-                className="w-full rounded-xl border px-4 py-2 disabled:opacity-60"
+                className="w-full rounded-xl border px-4 py-2"
               />
             </div>
           </div>
@@ -600,16 +511,15 @@ function ModalKelasBaru({
         )}
 
         <p className="text-xs text-slate-500">
-          Kelas langsung dibuat dengan 0 siswa - siswa bisa dimasukkan belakangan lewat tombol
-          &quot;Lihat siswa&quot; di tabel.
+          Kelas akan langsung terbuka untuk mulai memasukkan siswa yang belum punya riwayat kelas di
+          tahun ajaran ini.
         </p>
 
         <button
           type="submit"
-          disabled={saving}
-          className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          className="w-full rounded-xl bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700"
         >
-          {saving ? "Menyimpan..." : "Buat Kelas"}
+          Lanjutkan
         </button>
       </form>
     </Modal>
@@ -927,6 +837,7 @@ function ModalDetailKelas({
   namaKelas,
   tingkat,
   sudahMasuk,
+  sisaAntrean = 0,
   onClose,
   onHapus,
   onAssigned,
@@ -935,6 +846,7 @@ function ModalDetailKelas({
   namaKelas: string
   tingkat: string
   sudahMasuk: Riwayat[]
+  sisaAntrean?: number
   onClose: () => void
   onHapus: (item: Riwayat) => void
   onAssigned: () => void
@@ -1025,6 +937,15 @@ function ModalDetailKelas({
       onClose={onClose}
       maxWidth="max-w-2xl"
     >
+      {sisaAntrean > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-blue-50 px-4 py-2 text-sm text-blue-700">
+          <span>{sisaAntrean} kelas lagi menunggu dibuka dari pembuatan kelas sekaligus.</span>
+          <button onClick={onClose} className="font-semibold underline">
+            Lanjut ke Kelas Berikutnya
+          </button>
+        </div>
+      )}
+
       <div className="mb-4 flex gap-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
         <button
           onClick={() => setTab("sudah")}
