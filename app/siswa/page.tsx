@@ -850,7 +850,7 @@ export default function SiswaPage() {
                   </th>
                   <SortableTh label="Nama" sortKey="nama" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="NISN" sortKey="nisn" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
-                  <th className="px-4 py-3 text-left">Kelas</th>
+                  <SortableTh label="Kelas" sortKey="kelas" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Kelas PPDB" sortKey="kelas_ppdb" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Tahun" sortKey="tahun" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Status" sortKey="status" activeKey={sortBy} dir={sortDir} onSort={toggleSort} align="center" />
