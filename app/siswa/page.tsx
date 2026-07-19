@@ -850,7 +850,8 @@ export default function SiswaPage() {
                   </th>
                   <SortableTh label="Nama" sortKey="nama" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="NISN" sortKey="nisn" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
-                  <SortableTh label="Kelas" sortKey="kelas" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <th className="px-4 py-3 text-left">Kelas</th>
+                  <SortableTh label="Kelas PPDB" sortKey="kelas_ppdb" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Tahun" sortKey="tahun" activeKey={sortBy} dir={sortDir} onSort={toggleSort} />
                   <SortableTh label="Status" sortKey="status" activeKey={sortBy} dir={sortDir} onSort={toggleSort} align="center" />
                   <th className="px-4 py-3 text-center">Aksi</th>
@@ -860,7 +861,7 @@ export default function SiswaPage() {
               <tbody>
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                       Data siswa tidak ditemukan
                     </td>
                   </tr>
@@ -902,6 +903,8 @@ export default function SiswaPage() {
                           ? `${item.riwayat_kelas[0].tingkat} ${item.riwayat_kelas[0].nama_kelas}`
                           : "-"}
                       </td>
+
+                      <td className="px-4 py-3">{item.siswa_baru?.kelas_ppdb?.nama_kelas || "-"}</td>
 
                       <td className="px-4 py-3">{item.tahun}</td>
 
