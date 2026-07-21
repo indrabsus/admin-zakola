@@ -905,11 +905,19 @@ function ModalDetailKelas({
   const [kelasPpdbOptions, setKelasPpdbOptions] = useState<
     { id_kelas: string; nama_kelas: string; tingkat: number | string }[]
   >([])
+  const [filterTahunPpdb, setFilterTahunPpdb] = useState("")
+  const [tahunPpdbOptions, setTahunPpdbOptions] = useState<
+    { tahun: number | string }[]
+  >([])
 
   useEffect(() => {
     apiFetch("/kelas/data")
       .then((res) => setKelasPpdbOptions(Array.isArray(res.data) ? res.data : []))
       .catch(() => setKelasPpdbOptions([]))
+
+    apiFetch("/ppdb/masterppdb")
+      .then((res) => setTahunPpdbOptions(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setTahunPpdbOptions([]))
   }, [])
 
   const fetchBelumMasuk = async () => {
@@ -922,6 +930,7 @@ function ModalDetailKelas({
       params.set("limit", "10")
       if (search) params.set("search", search)
       if (filterKelasPpdb) params.set("id_kelas_ppdb", filterKelasPpdb)
+      if (filterTahunPpdb) params.set("tahun", filterTahunPpdb)
 
       const res = await apiFetch(`/riwayat-kelas/belum-kelas?${params.toString()}`)
 
@@ -938,7 +947,7 @@ function ModalDetailKelas({
   useEffect(() => {
     if (tab === "belum") fetchBelumMasuk()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, page, search, filterKelasPpdb])
+  }, [tab, page, search, filterKelasPpdb, filterTahunPpdb])
 
   const assign = async (siswa: SiswaBelumKelas) => {
     const confirm = await Swal.fire({
@@ -1077,6 +1086,22 @@ function ModalDetailKelas({
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
             </form>
+
+            <select
+              value={filterTahunPpdb}
+              onChange={(e) => {
+                setPage(1)
+                setFilterTahunPpdb(e.target.value)
+              }}
+              className="rounded-xl border border-slate-200 py-2 px-3 text-sm outline-none sm:w-40"
+            >
+              <option value="">Semua Tahun PPDB</option>
+              {tahunPpdbOptions.map((item) => (
+                <option key={item.tahun} value={item.tahun}>
+                  {item.tahun}
+                </option>
+              ))}
+            </select>
 
             <select
               value={filterKelasPpdb}
