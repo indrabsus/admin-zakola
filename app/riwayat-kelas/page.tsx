@@ -864,6 +864,12 @@ type SiswaBelumKelas = {
   nama_lengkap: string
   nisn: string | null
   jenkel: "l" | "p" | null
+  siswa_baru?: {
+    kelas_ppdb?: {
+      nama_kelas: string
+      tingkat: number | string
+    } | null
+  } | null
 }
 
 function ModalDetailKelas({
@@ -1083,6 +1089,12 @@ function ModalDetailKelas({
                   <div>
                     <div className="font-semibold text-slate-800">{siswa.nama_lengkap}</div>
                     <div className="text-xs text-slate-500">{siswa.nisn || "-"}</div>
+                    <div className="text-xs text-slate-500">
+                      Kelas PPDB:{" "}
+                      {siswa.siswa_baru?.kelas_ppdb
+                        ? `${siswa.siswa_baru.kelas_ppdb.tingkat} ${siswa.siswa_baru.kelas_ppdb.nama_kelas}`
+                        : "-"}
+                    </div>
                   </div>
 
                   <button
