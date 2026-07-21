@@ -901,6 +901,16 @@ function ModalDetailKelas({
   const [search, setSearch] = useState("")
   const [searchInput, setSearchInput] = useState("")
   const [assigningId, setAssigningId] = useState<string | null>(null)
+  const [filterKelasPpdb, setFilterKelasPpdb] = useState("")
+  const [kelasPpdbOptions, setKelasPpdbOptions] = useState<
+    { id_kelas: string; nama_kelas: string; tingkat: number | string }[]
+  >([])
+
+  useEffect(() => {
+    apiFetch("/kelas/data")
+      .then((res) => setKelasPpdbOptions(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setKelasPpdbOptions([]))
+  }, [])
 
   const fetchBelumMasuk = async () => {
     try {
@@ -911,6 +921,7 @@ function ModalDetailKelas({
       params.set("page", String(page))
       params.set("limit", "10")
       if (search) params.set("search", search)
+      if (filterKelasPpdb) params.set("id_kelas_ppdb", filterKelasPpdb)
 
       const res = await apiFetch(`/riwayat-kelas/belum-kelas?${params.toString()}`)
 
@@ -927,7 +938,7 @@ function ModalDetailKelas({
   useEffect(() => {
     if (tab === "belum") fetchBelumMasuk()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, page, search])
+  }, [tab, page, search, filterKelasPpdb])
 
   const assign = async (siswa: SiswaBelumKelas) => {
     const confirm = await Swal.fire({
@@ -1045,26 +1056,44 @@ function ModalDetailKelas({
         )
       ) : (
         <div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              setPage(1)
-              setSearch(searchInput)
-            }}
-            className="relative mb-3"
-          >
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Cari nama/NISN..."
-              autoComplete="off"
-              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none"
-            />
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-          </form>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                setPage(1)
+                setSearch(searchInput)
+              }}
+              className="relative flex-1"
+            >
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Cari nama/NISN..."
+                autoComplete="off"
+                className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none"
+              />
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </form>
+
+            <select
+              value={filterKelasPpdb}
+              onChange={(e) => {
+                setPage(1)
+                setFilterKelasPpdb(e.target.value)
+              }}
+              className="rounded-xl border border-slate-200 py-2 px-3 text-sm outline-none sm:w-56"
+            >
+              <option value="">Semua Kelas PPDB</option>
+              {kelasPpdbOptions.map((kelas) => (
+                <option key={kelas.id_kelas} value={kelas.id_kelas}>
+                  {kelas.tingkat} {kelas.nama_kelas}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <p className="mb-2 text-xs text-slate-500">
             {total} siswa aktif belum punya kelas di tahun ajaran ini.
