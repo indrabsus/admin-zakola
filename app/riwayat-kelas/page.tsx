@@ -909,16 +909,31 @@ function ModalDetailKelas({
   const [tahunPpdbOptions, setTahunPpdbOptions] = useState<
     { tahun: number | string }[]
   >([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkAssigning, setBulkAssigning] = useState(false)
 
   useEffect(() => {
-    apiFetch("/kelas/data")
-      .then((res) => setKelasPpdbOptions(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setKelasPpdbOptions([]))
-
     apiFetch("/ppdb/masterppdb")
       .then((res) => setTahunPpdbOptions(Array.isArray(res.data) ? res.data : []))
       .catch(() => setTahunPpdbOptions([]))
   }, [])
+
+  useEffect(() => {
+    // Kalau tahun PPDB dipilih, kelas PPDB ikut disaring ke tahun itu saja
+    // (lewat jurusan_ppdb -> master_ppdb) - tanpa filter tahun, tampilkan
+    // semua kelas dari semua tahun.
+    const endpoint = filterTahunPpdb
+      ? `/ppdb/kelas?tahun=${filterTahunPpdb}`
+      : "/kelas/data"
+
+    apiFetch(endpoint)
+      .then((res) => setKelasPpdbOptions(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setKelasPpdbOptions([]))
+
+    // Kelas yang lagi dipilih bisa jadi tidak ada di tahun PPDB yang baru -
+    // reset supaya tidak nyangkut kombinasi filter yang sudah tidak valid.
+    setFilterKelasPpdb("")
+  }, [filterTahunPpdb])
 
   const fetchBelumMasuk = async () => {
     try {
@@ -946,8 +961,78 @@ function ModalDetailKelas({
 
   useEffect(() => {
     if (tab === "belum") fetchBelumMasuk()
+    setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, page, search, filterKelasPpdb, filterTahunPpdb])
+
+  const toggleSelect = (id_siswa: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id_siswa)) next.delete(id_siswa)
+      else next.add(id_siswa)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === belumMasuk.length
+        ? new Set()
+        : new Set(belumMasuk.map((s) => s.id_siswa))
+    )
+  }
+
+  const assignBulk = async () => {
+    const siswaTerpilih = belumMasuk.filter((s) => selectedIds.has(s.id_siswa))
+    if (siswaTerpilih.length === 0) return
+
+    const confirm = await Swal.fire({
+      title: "Masukkan ke Kelas?",
+      text: `${siswaTerpilih.length} siswa akan dimasukkan ke kelas ${namaKelas} tahun ajaran ${tahunAjaran}.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Masukkan Semua",
+      cancelButtonText: "Batal",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setBulkAssigning(true)
+
+      const hasil = await Promise.allSettled(
+        siswaTerpilih.map((siswa) =>
+          apiFetch("/riwayat-kelas", {
+            method: "POST",
+            body: JSON.stringify({
+              id_siswa: siswa.id_siswa,
+              tahun_ajaran: tahunAjaran,
+              tingkat,
+              nama_kelas: namaKelas,
+            }),
+          })
+        )
+      )
+
+      const berhasil = hasil.filter((h) => h.status === "fulfilled").length
+      const gagal = hasil.length - berhasil
+
+      await Swal.fire({
+        title: gagal === 0 ? "Berhasil" : "Sebagian Berhasil",
+        text:
+          gagal === 0
+            ? `${berhasil} siswa berhasil dimasukkan ke kelas ${namaKelas}.`
+            : `${berhasil} siswa berhasil, ${gagal} gagal dimasukkan.`,
+        icon: gagal === 0 ? "success" : "warning",
+      })
+
+      setSelectedIds(new Set())
+      onAssigned()
+      fetchBelumMasuk()
+    } finally {
+      setBulkAssigning(false)
+    }
+  }
 
   const assign = async (siswa: SiswaBelumKelas) => {
     const confirm = await Swal.fire({
@@ -1120,9 +1205,24 @@ function ModalDetailKelas({
             </select>
           </div>
 
-          <p className="mb-2 text-xs text-slate-500">
-            {total} siswa aktif belum punya kelas di tahun ajaran ini.
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              {total} siswa aktif belum punya kelas di tahun ajaran ini.
+            </p>
+
+            {selectedIds.size > 0 && (
+              <button
+                onClick={assignBulk}
+                disabled={bulkAssigning}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                <UserPlus size={14} />
+                {bulkAssigning
+                  ? "Memproses..."
+                  : `Masukkan ${selectedIds.size} Siswa`}
+              </button>
+            )}
+          </div>
 
           {loadingBelum ? (
             <div className="flex items-center justify-center gap-3 p-8 text-slate-600">
@@ -1135,19 +1235,38 @@ function ModalDetailKelas({
             </div>
           ) : (
             <div className="max-h-[45vh] space-y-2 overflow-y-auto">
+              <label className="flex items-center gap-2 px-1 text-xs font-medium text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === belumMasuk.length}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Pilih semua di halaman ini
+              </label>
+
               {belumMasuk.map((siswa) => (
                 <div
                   key={siswa.id_siswa}
                   className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
                 >
-                  <div>
-                    <div className="font-semibold text-slate-800">{siswa.nama_lengkap}</div>
-                    <div className="text-xs text-slate-500">{siswa.nisn || "-"}</div>
-                    <div className="text-xs text-slate-500">
-                      Kelas PPDB:{" "}
-                      {siswa.siswa_baru?.kelas_ppdb
-                        ? `${siswa.siswa_baru.kelas_ppdb.tingkat} ${siswa.siswa_baru.kelas_ppdb.nama_kelas}`
-                        : "-"}
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(siswa.id_siswa)}
+                      onChange={() => toggleSelect(siswa.id_siswa)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+
+                    <div>
+                      <div className="font-semibold text-slate-800">{siswa.nama_lengkap}</div>
+                      <div className="text-xs text-slate-500">{siswa.nisn || "-"}</div>
+                      <div className="text-xs text-slate-500">
+                        Kelas PPDB:{" "}
+                        {siswa.siswa_baru?.kelas_ppdb
+                          ? `${siswa.siswa_baru.kelas_ppdb.tingkat} ${siswa.siswa_baru.kelas_ppdb.nama_kelas}`
+                          : "-"}
+                      </div>
                     </div>
                   </div>
 
