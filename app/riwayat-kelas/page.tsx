@@ -896,6 +896,7 @@ function ModalDetailKelas({
   const [belumMasuk, setBelumMasuk] = useState<SiswaBelumKelas[]>([])
   const [loadingBelum, setLoadingBelum] = useState(false)
   const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState("")
@@ -911,6 +912,13 @@ function ModalDetailKelas({
   >([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkAssigning, setBulkAssigning] = useState(false)
+
+  const [selectedSudahIds, setSelectedSudahIds] = useState<Set<string>>(new Set())
+  const [bulkHapusSudah, setBulkHapusSudah] = useState(false)
+
+  useEffect(() => {
+    setSelectedSudahIds(new Set())
+  }, [sudahMasuk])
 
   useEffect(() => {
     apiFetch("/ppdb/masterppdb")
@@ -942,7 +950,7 @@ function ModalDetailKelas({
       const params = new URLSearchParams()
       params.set("tahun_ajaran", tahunAjaran)
       params.set("page", String(page))
-      params.set("limit", "10")
+      params.set("limit", String(limit))
       if (search) params.set("search", search)
       if (filterKelasPpdb) params.set("id_kelas_ppdb", filterKelasPpdb)
       if (filterTahunPpdb) params.set("tahun", filterTahunPpdb)
@@ -963,7 +971,7 @@ function ModalDetailKelas({
     if (tab === "belum") fetchBelumMasuk()
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, page, search, filterKelasPpdb, filterTahunPpdb])
+  }, [tab, page, limit, search, filterKelasPpdb, filterTahunPpdb])
 
   const toggleSelect = (id_siswa: string) => {
     setSelectedIds((prev) => {
@@ -1031,6 +1039,67 @@ function ModalDetailKelas({
       fetchBelumMasuk()
     } finally {
       setBulkAssigning(false)
+    }
+  }
+
+  const toggleSelectSudah = (id_riwayat: string) => {
+    setSelectedSudahIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id_riwayat)) next.delete(id_riwayat)
+      else next.add(id_riwayat)
+      return next
+    })
+  }
+
+  const toggleSelectAllSudah = () => {
+    setSelectedSudahIds((prev) =>
+      prev.size === sudahMasuk.length
+        ? new Set()
+        : new Set(sudahMasuk.map((r) => r.id_riwayat))
+    )
+  }
+
+  const hapusBulkSudah = async () => {
+    const terpilih = sudahMasuk.filter((r) => selectedSudahIds.has(r.id_riwayat))
+    if (terpilih.length === 0) return
+
+    const confirm = await Swal.fire({
+      title: "Hapus dari Kelas?",
+      text: `${terpilih.length} siswa akan dihapus dari kelas ${namaKelas}.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Hapus Semua",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#dc2626",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setBulkHapusSudah(true)
+
+      const hasil = await Promise.allSettled(
+        terpilih.map((item) =>
+          apiFetch(`/riwayat-kelas/${item.id_riwayat}`, { method: "DELETE" })
+        )
+      )
+
+      const berhasil = hasil.filter((h) => h.status === "fulfilled").length
+      const gagal = hasil.length - berhasil
+
+      await Swal.fire({
+        title: gagal === 0 ? "Berhasil" : "Sebagian Berhasil",
+        text:
+          gagal === 0
+            ? `${berhasil} siswa berhasil dihapus dari kelas ${namaKelas}.`
+            : `${berhasil} siswa berhasil, ${gagal} gagal dihapus.`,
+        icon: gagal === 0 ? "success" : "warning",
+      })
+
+      setSelectedSudahIds(new Set())
+      onAssigned()
+    } finally {
+      setBulkHapusSudah(false)
     }
   }
 
@@ -1116,36 +1185,73 @@ function ModalDetailKelas({
             Belum ada siswa di kelas ini.
           </div>
         ) : (
-          <div className="max-h-[55vh] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50">
-                <tr>
-                  <th className="px-3 py-2 text-left">Nama</th>
-                  <th className="px-3 py-2 text-left">NISN</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-center">Aksi</th>
-                </tr>
-              </thead>
+          <div>
+            {selectedSudahIds.size > 0 && (
+              <div className="mb-3 flex items-center justify-between rounded-xl bg-red-50 px-4 py-2">
+                <span className="text-sm text-red-700">
+                  {selectedSudahIds.size} siswa dipilih
+                </span>
 
-              <tbody>
-                {sudahMasuk.map((item) => (
-                  <tr key={item.id_riwayat} className="border-t">
-                    <td className="px-3 py-2">{item.siswa_ppdb?.nama_lengkap || item.id_siswa}</td>
-                    <td className="px-3 py-2">{item.siswa_ppdb?.nisn || "-"}</td>
-                    <td className="px-3 py-2 capitalize">{item.siswa_ppdb?.status || "-"}</td>
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        onClick={() => onHapus(item)}
-                        className="rounded-lg bg-red-100 p-2 text-red-700 hover:bg-red-200"
-                        title="Hapus dari kelas"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
+                <button
+                  onClick={hapusBulkSudah}
+                  disabled={bulkHapusSudah}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  <Trash2 size={14} />
+                  {bulkHapusSudah
+                    ? "Memproses..."
+                    : `Hapus ${selectedSudahIds.size} Siswa`}
+                </button>
+              </div>
+            )}
+
+            <div className="max-h-[55vh] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr>
+                    <th className="w-10 px-3 py-2 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedSudahIds.size === sudahMasuk.length}
+                        onChange={toggleSelectAllSudah}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </th>
+                    <th className="px-3 py-2 text-left">Nama</th>
+                    <th className="px-3 py-2 text-left">NISN</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-center">Aksi</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {sudahMasuk.map((item) => (
+                    <tr key={item.id_riwayat} className="border-t">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedSudahIds.has(item.id_riwayat)}
+                          onChange={() => toggleSelectSudah(item.id_riwayat)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </td>
+                      <td className="px-3 py-2">{item.siswa_ppdb?.nama_lengkap || item.id_siswa}</td>
+                      <td className="px-3 py-2">{item.siswa_ppdb?.nisn || "-"}</td>
+                      <td className="px-3 py-2 capitalize">{item.siswa_ppdb?.status || "-"}</td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => onHapus(item)}
+                          className="rounded-lg bg-red-100 p-2 text-red-700 hover:bg-red-200"
+                          title="Hapus dari kelas"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )
       ) : (
@@ -1283,28 +1389,45 @@ function ModalDetailKelas({
             </div>
           )}
 
-          {!loadingBelum && totalPages > 1 && (
-            <div className="mt-3 flex items-center justify-between text-sm">
-              <span className="text-slate-500">
-                Halaman {page} dari {totalPages}
-              </span>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  className="rounded-lg border px-3 py-1 disabled:opacity-50"
+          {!loadingBelum && total > 0 && (
+            <div className="mt-3 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-slate-500">
+                <span>Tampilkan</span>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setPage(1)
+                    setLimit(Number(e.target.value))
+                  }}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm outline-none"
                 >
-                  Sebelumnya
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="rounded-lg border px-3 py-1 disabled:opacity-50"
-                >
-                  Berikutnya
-                </button>
+                  <option value={10}>10</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span>
+                  per halaman &middot; Halaman {page} dari {totalPages}
+                </span>
               </div>
+
+              {totalPages > 1 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                  >
+                    Sebelumnya
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="rounded-lg border px-3 py-1 disabled:opacity-50"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
