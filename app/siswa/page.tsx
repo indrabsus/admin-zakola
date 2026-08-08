@@ -18,7 +18,7 @@ import {
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, waFetch } from "@/lib/api"
 import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
 type KelasPpdb = {
@@ -189,7 +189,7 @@ export default function SiswaPage() {
   useEffect(() => {
     const loadWaStatus = async () => {
       try {
-        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        const res: { data: WaStatusResponse } = await waFetch("/wa/status")
         setWaStatus(res.data.status)
       } catch {
         setWaStatus(null)
@@ -602,7 +602,7 @@ export default function SiswaPage() {
 
     for (const item of penerima) {
       try {
-        await apiFetch("/wa/kirim", {
+        await waFetch("/wa/kirim", {
           method: "POST",
           body: JSON.stringify({
             nomor: targetWa === "siswa" ? item.no_hp : item.no_hp_ortu,

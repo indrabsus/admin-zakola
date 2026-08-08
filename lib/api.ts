@@ -2,10 +2,13 @@ import { logout } from "@/lib/auth"
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL
 
-export const apiFetch = async (
-  endpoint: string,
-  options: RequestInit = {}
-) => {
+// Bot WA sekarang dihosting terpisah (project wabot-claude), bukan lagi
+// bagian dari backend sakuci-express - endpoint /wa/status, /wa/chats,
+// /wa/kirim dipanggil ke sini, dengan kontrak response yang sama persis
+// (lihat README wabot-claude) supaya tidak perlu ubah cara pemanggilannya.
+export const WA_API_URL = process.env.NEXT_PUBLIC_WA_API_URL
+
+async function fetchDariBase(baseUrl: string | undefined, endpoint: string, options: RequestInit) {
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem("token_admin")
@@ -14,7 +17,7 @@ export const apiFetch = async (
   const isFormData =
     typeof FormData !== "undefined" && options.body instanceof FormData
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     headers: {
       ...(!isFormData && { "Content-Type": "application/json" }),
@@ -42,4 +45,18 @@ export const apiFetch = async (
   }
 
   return data
+}
+
+export const apiFetch = async (
+  endpoint: string,
+  options: RequestInit = {}
+) => {
+  return fetchDariBase(API_URL, endpoint, options)
+}
+
+export const waFetch = async (
+  endpoint: string,
+  options: RequestInit = {}
+) => {
+  return fetchDariBase(WA_API_URL, endpoint, options)
 }

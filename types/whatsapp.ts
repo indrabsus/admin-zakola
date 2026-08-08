@@ -1,39 +1,18 @@
-export type WaStatus = "idle" | "loading" | "qr" | "authenticated" | "ready" | "disconnected"
-
-export type WaInfo = {
-  number: string | null
-  name: string | null
-}
+// Bot WA (project wabot-claude) cuma dua status: "ready" (terhubung) atau
+// "not_ready" (belum/terputus) - beda dari bot whatsapp-web.js lama yang
+// punya status idle/loading/qr/authenticated/disconnected, karena pairing-nya
+// sekarang lewat scan QR di terminal bot (bukan lewat browser).
+export type WaStatus = "ready" | "not_ready"
 
 export type WaStatusResponse = {
   status: WaStatus
-  qr: string | null
-  info: WaInfo | null
 }
 
-export type WaLastMessage = {
-  body: string
-  fromMe: boolean
-  timestamp: number
-  hasMedia: boolean
-}
-
+// Bentuk respons GET /wa/chats: log pesan MASUK terakhir (maks 50), bukan
+// daftar thread percakapan - tidak ada nama kontak, media, atau riwayat
+// per-chat.
 export type WaChat = {
-  id: string
-  name: string
-  isGroup: boolean
-  unreadCount: number
-  timestamp: number
-  lastMessage: WaLastMessage | null
-}
-
-export type WaMessage = {
-  id: string
-  chatId: string
-  body: string
-  fromMe: boolean
-  timestamp: number
-  author: string | null
-  hasMedia: boolean
-  type: string
+  nomor: string
+  pesan: string
+  waktu: string
 }

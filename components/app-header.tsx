@@ -7,7 +7,7 @@ import { ChevronDown, KeyRound, LogOut, User } from "lucide-react"
 import Modal from "@/components/modal"
 import { UserLogin } from "@/types/auth"
 import { getUserRole, logout } from "@/lib/auth"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, waFetch } from "@/lib/api"
 import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
 export default function AppHeader() {
@@ -36,7 +36,7 @@ export default function AppHeader() {
   useEffect(() => {
     const loadWaStatus = async () => {
       try {
-        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        const res: { data: WaStatusResponse } = await waFetch("/wa/status")
         setWaStatus(res.data.status)
       } catch {
         setWaStatus(null)

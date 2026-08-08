@@ -6,7 +6,7 @@ import { Edit, Loader2, MessageCircle, Plus, Printer, Trash2 } from "lucide-reac
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, waFetch } from "@/lib/api"
 import { useSort } from "@/lib/use-sort"
 import type { WaStatus, WaStatusResponse } from "@/types/whatsapp"
 
@@ -269,7 +269,7 @@ export default function StafPage() {
   useEffect(() => {
     const loadWaStatus = async () => {
       try {
-        const res: { data: WaStatusResponse } = await apiFetch("/wa/status")
+        const res: { data: WaStatusResponse } = await waFetch("/wa/status")
         setWaStatus(res.data.status)
       } catch {
         setWaStatus(null)
@@ -502,7 +502,7 @@ export default function StafPage() {
 
     for (const staf of penerima) {
       try {
-        await apiFetch("/wa/kirim", {
+        await waFetch("/wa/kirim", {
           method: "POST",
           body: JSON.stringify({ nomor: staf.no_hp, pesan: pesanWa }),
         })
