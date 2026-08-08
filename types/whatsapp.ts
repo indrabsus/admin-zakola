@@ -7,12 +7,3 @@ export type WaStatus = "ready" | "not_ready"
 export type WaStatusResponse = {
   status: WaStatus
 }
-
-// Bentuk respons GET /wa/chats: log pesan MASUK terakhir (maks 50), bukan
-// daftar thread percakapan - tidak ada nama kontak, media, atau riwayat
-// per-chat.
-export type WaChat = {
-  nomor: string
-  pesan: string
-  waktu: string
-}
