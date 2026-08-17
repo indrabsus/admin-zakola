@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Swal from "sweetalert2"
+import * as XLSX from "xlsx"
 import {
   AlertTriangle,
   CheckCircle2,
   Edit,
   Eye,
+  FileSpreadsheet,
   Loader2,
   LogOut,
   MessageCircle,
@@ -140,6 +142,7 @@ export default function SiswaPage() {
   const [modalGantiStatus, setModalGantiStatus] = useState(false)
   const [statusBaru, setStatusBaru] = useState<Siswa["status"]>("aktif")
   const [savingBulk, setSavingBulk] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
@@ -201,33 +204,40 @@ export default function SiswaPage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Dipakai bersama oleh fetchData (list berhalaman) dan export Excel (semua
+  // data yang cocok filter) supaya kriteria filternya selalu identik.
+  const buildFilterParams = () => {
+    const params = new URLSearchParams()
+    params.set("sort_by", sortBy)
+    params.set("sort_dir", sortDir)
+    if (tahun) params.set("tahun", tahun)
+    if (status) params.set("status", status)
+    if (search) params.set("search", search)
+    if (tahunAjaranFilter) {
+      params.set("tahun_ajaran", tahunAjaranFilter)
+      if (kelasFilter === BELUM_KELAS_VALUE) {
+        params.set("belum_kelas", "1")
+      } else if (kelasFilter) {
+        // value dropdown kelas berformat "tingkat|nama_kelas" - nama_kelas saja
+        // bisa dipakai ulang di tingkat berbeda (mis. "MPLB 1" di tingkat 11
+        // dan 12), jadi tingkat wajib disertakan supaya filter tidak
+        // menyatukan siswa dari dua kelas yang beda tingkat.
+        const separatorIndex = kelasFilter.indexOf("|")
+        params.set("tingkat", kelasFilter.slice(0, separatorIndex))
+        params.set("kelas", kelasFilter.slice(separatorIndex + 1))
+      }
+    }
+    return params
+  }
+
   const fetchData = async () => {
     try {
       setLoading(true)
       setError("")
 
-      const params = new URLSearchParams()
+      const params = buildFilterParams()
       params.set("page", String(page))
       params.set("limit", String(limit))
-      params.set("sort_by", sortBy)
-      params.set("sort_dir", sortDir)
-      if (tahun) params.set("tahun", tahun)
-      if (status) params.set("status", status)
-      if (search) params.set("search", search)
-      if (tahunAjaranFilter) {
-        params.set("tahun_ajaran", tahunAjaranFilter)
-        if (kelasFilter === BELUM_KELAS_VALUE) {
-          params.set("belum_kelas", "1")
-        } else if (kelasFilter) {
-          // value dropdown kelas berformat "tingkat|nama_kelas" - nama_kelas saja
-          // bisa dipakai ulang di tingkat berbeda (mis. "MPLB 1" di tingkat 11
-          // dan 12), jadi tingkat wajib disertakan supaya filter tidak
-          // menyatukan siswa dari dua kelas yang beda tingkat.
-          const separatorIndex = kelasFilter.indexOf("|")
-          params.set("tingkat", kelasFilter.slice(0, separatorIndex))
-          params.set("kelas", kelasFilter.slice(separatorIndex + 1))
-        }
-      }
 
       const res = await apiFetch(`/siswa/master?${params.toString()}`)
 
@@ -246,6 +256,70 @@ export default function SiswaPage() {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, tahun, status, search, sortBy, sortDir, kelasFilter, tahunAjaranFilter])
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true)
+
+      const params = buildFilterParams()
+      params.set("limit", "1000")
+
+      // Backend membatasi limit maks 1000/halaman - loop tiap halaman sampai
+      // habis supaya semua data yang cocok filter ikut terekspor, bukan cuma
+      // 1000 baris pertama.
+      let allRows: Siswa[] = []
+      let exportPage = 1
+      let totalPagesExport = 1
+
+      do {
+        params.set("page", String(exportPage))
+        const res = await apiFetch(`/siswa/master?${params.toString()}`)
+        const rows: Siswa[] = Array.isArray(res.data) ? res.data : []
+        allRows = allRows.concat(rows)
+        totalPagesExport = res.pagination?.total_pages || 1
+        exportPage += 1
+      } while (exportPage <= totalPagesExport)
+
+      if (allRows.length === 0) {
+        Swal.fire("Info", "Tidak ada data siswa untuk diekspor sesuai filter saat ini.", "info")
+        return
+      }
+
+      const sheetData = allRows.map((item) => ({
+        Nama: item.nama_lengkap,
+        NISN: item.nisn,
+        NIK: item.nik_siswa,
+        "Jenis Kelamin": item.jenkel === "l" ? "Laki-laki" : "Perempuan",
+        "Tempat Lahir": item.tempat_lahir || "",
+        "Tanggal Lahir": item.tanggal_lahir || "",
+        Agama: item.agama || "",
+        Alamat: item.alamat || "",
+        "Nama Ayah": item.nama_ayah || "",
+        "Nama Ibu": item.nama_ibu || "",
+        "No HP Siswa": item.no_hp || "",
+        "No HP Ortu": item.no_hp_ortu || "",
+        "Asal Sekolah": item.asal_sekolah || "",
+        Kelas: item.riwayat_kelas?.[0]
+          ? `${item.riwayat_kelas[0].tingkat} ${item.riwayat_kelas[0].nama_kelas}`
+          : "-",
+        "Kelas PPDB": item.siswa_baru?.kelas_ppdb?.nama_kelas || "-",
+        Tahun: item.tahun,
+        Status: statusLabel[item.status] || item.status,
+        Username: item.username,
+      }))
+
+      const worksheet = XLSX.utils.json_to_sheet(sheetData)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Siswa")
+
+      const timestamp = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(workbook, `data-siswa-${timestamp}.xlsx`)
+    } catch (err) {
+      Swal.fire("Gagal", err instanceof Error ? err.message : "Gagal mengekspor data siswa", "error")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     const loadTahunAjaran = async () => {
@@ -819,6 +893,16 @@ export default function SiswaPage() {
           >
             <UserPlus size={16} />
             Tambah Siswa Manual
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            title="Ekspor data siswa sesuai filter yang aktif"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+            {exporting ? "Mengekspor..." : "Export Excel"}
           </button>
         </div>
       </div>
