@@ -409,14 +409,19 @@ export default function StafPage() {
         },
       })
 
-      const res = await apiFetch("/zk/createuser", {
-        method: "POST",
-        body: JSON.stringify({
-          id_data: item.id_data,
-          uid_fp: item.uid_fp,
-          nama_singkat: namaSingkat,
-        }),
+      const laravelUrl = `https://sakuci.id/insertuser/${item.uid_fp}/${item.uid_fp}/${encodeURIComponent(namaSingkat)}/0/0/0?json=1`
+      const response = await fetch(laravelUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
       })
+
+      const res = await response.json().catch(() => null)
+
+      if (!response.ok && response.status !== 207) {
+        throw new Error(res?.message || `Gagal terhubung ke mesin fingerprint (Status: ${response.status})`)
+      }
 
       if (res?.all_already_exists) {
         await Swal.fire({
