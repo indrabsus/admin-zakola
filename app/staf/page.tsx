@@ -418,17 +418,23 @@ export default function StafPage() {
         }),
       })
 
-      if (res?.success) {
+      if (res?.all_already_exists) {
+        await Swal.fire({
+          icon: "info",
+          title: "Sudah Ada Data",
+          text: res.message || `UID ${item.uid_fp} sudah ada di 2 mesin fingerprint.`,
+        })
+      } else if (res?.partial_exists) {
+        await Swal.fire({
+          icon: "info",
+          title: "Sebagian Sudah Ada Data",
+          text: res.message,
+        })
+      } else if (res?.success) {
         await Swal.fire({
           icon: "success",
-          title: "Berhasil Terkirim",
-          text: res.message || `Data ${namaSingkat} (UID ${item.uid_fp}) berhasil dikirim ke 2 mesin fingerprint.`,
-        })
-      } else if (res?.partial) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Sebagian Berhasil",
-          text: res.message,
+          title: "Sukses",
+          text: res.message || `Data ${namaSingkat} (UID ${item.uid_fp}) berhasil ditambahkan ke 2 mesin fingerprint.`,
         })
       } else {
         await Swal.fire({
