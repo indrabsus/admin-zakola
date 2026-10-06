@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Swal from "sweetalert2"
-import { Edit, Loader2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
+import { Edit, Fingerprint, Loader2, MessageCircle, Plus, Printer, Trash2 } from "lucide-react"
 import AppShell from "@/components/app-shell"
 import Modal from "@/components/modal"
 import SortableTh from "@/components/sortable-th"
@@ -16,6 +16,7 @@ type StafItem = {
   id_data: string
   id_user: string
   nama_lengkap: string
+  nama_singkat?: string
   no_hp: string | null
   uid_fp: number | null
   role: StafRole
@@ -32,6 +33,7 @@ type RawStafRow = {
   id_data: string
   id_user: string
   nama_lengkap: string
+  nama_singkat?: string
   no_hp: string | null
   uid_fp: number | null
   user?: { id: string }
@@ -238,6 +240,7 @@ export default function StafPage() {
 
   const [editing, setEditing] = useState<StafItem | null>(null)
   const [editNama, setEditNama] = useState("")
+  const [editNamaSingkat, setEditNamaSingkat] = useState("")
   const [editNoHp, setEditNoHp] = useState("")
   const [editUidFp, setEditUidFp] = useState("")
   const [saving, setSaving] = useState(false)
@@ -254,6 +257,7 @@ export default function StafPage() {
   const [formTambah, setFormTambah] = useState(emptyTambah)
 
   const [printingId, setPrintingId] = useState<string | null>(null)
+  const [pushingFpId, setPushingFpId] = useState<string | null>(null)
   const [bulanKehadiran, setBulanKehadiran] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -291,6 +295,7 @@ export default function StafPage() {
         id_data: item.id_data,
         id_user: item.user?.id || item.id_user,
         nama_lengkap: item.nama_lengkap,
+        nama_singkat: item.nama_singkat || "",
         no_hp: item.no_hp,
         uid_fp: item.uid_fp,
         role,
@@ -318,6 +323,7 @@ export default function StafPage() {
   const openEdit = (item: StafItem) => {
     setEditing(item)
     setEditNama(item.nama_lengkap)
+    setEditNamaSingkat(item.nama_singkat || "")
     setEditNoHp(item.no_hp || "")
     setEditUidFp(item.uid_fp != null ? String(item.uid_fp) : "")
   }
@@ -337,6 +343,7 @@ export default function StafPage() {
         method: "PUT",
         body: JSON.stringify({
           nama_lengkap: editNama,
+          nama_singkat: editNamaSingkat || null,
           no_hp: editNoHp || null,
           uid_fp: editUidFp ? Number(editUidFp) : null,
         }),
@@ -356,6 +363,88 @@ export default function StafPage() {
       Swal.fire("Error", err instanceof Error ? err.message : "Terjadi kesalahan", "error")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const kirimKeMesinFp = async (item: StafItem) => {
+    if (!item.uid_fp) {
+      Swal.fire({
+        icon: "warning",
+        title: "UID FP Belum Ada",
+        text: `Staf ${item.nama_lengkap} belum memiliki UID Fingerprint. Silakan edit data staf terlebih dahulu.`,
+      })
+      return
+    }
+
+    const namaSingkat = (item.nama_singkat || item.nama_lengkap.split(" ")[0]).trim()
+
+    const confirm = await Swal.fire({
+      title: "Kirim ke Mesin Fingerprint?",
+      html: `
+        <p class="text-slate-600">Kirim data user ke 2 mesin fingerprint di sekolah:</p>
+        <div class="mt-3 rounded-xl bg-slate-50 p-3 text-left text-sm border border-slate-200">
+          <div><span class="text-slate-500">Nama:</span> <b>${escapeHtml(item.nama_lengkap)}</b></div>
+          <div><span class="text-slate-500">Nama Singkat:</span> <b>${escapeHtml(namaSingkat)}</b></div>
+          <div><span class="text-slate-500">UID FP:</span> <b class="text-blue-600">${item.uid_fp}</b></div>
+        </div>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Kirim ke Mesin",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#2563eb",
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setPushingFpId(item.id_data)
+      Swal.fire({
+        title: "Mengirim Data...",
+        text: "Menghubungkan ke 2 mesin fingerprint...",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+          Swal.showLoading()
+        },
+      })
+
+      const res = await apiFetch("/zk/createuser", {
+        method: "POST",
+        body: JSON.stringify({
+          id_data: item.id_data,
+          uid_fp: item.uid_fp,
+          nama_singkat: namaSingkat,
+        }),
+      })
+
+      if (res?.success) {
+        await Swal.fire({
+          icon: "success",
+          title: "Berhasil Terkirim",
+          text: res.message || `Data ${namaSingkat} (UID ${item.uid_fp}) berhasil dikirim ke 2 mesin fingerprint.`,
+        })
+      } else if (res?.partial) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Sebagian Berhasil",
+          text: res.message,
+        })
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Gagal Mengirim",
+          text: res?.message || "Gagal mengirim ke mesin fingerprint.",
+        })
+      }
+    } catch (err) {
+      Swal.fire({
+        icon: "error",
+        title: "Gagal Mengirim",
+        text: err instanceof Error ? err.message : "Terjadi kesalahan saat menghubungi mesin fingerprint.",
+      })
+    } finally {
+      setPushingFpId(null)
     }
   }
 
@@ -636,6 +725,19 @@ export default function StafPage() {
                       <td className="px-4 py-3">
                         <div className="mx-auto flex w-fit overflow-hidden rounded-xl border border-slate-200">
                           <button
+                            onClick={() => kirimKeMesinFp(item)}
+                            disabled={pushingFpId === item.id_data}
+                            title="Kirim ke Mesin Fingerprint"
+                            className="border-r px-3 py-2 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                          >
+                            {pushingFpId === item.id_data ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Fingerprint size={16} />
+                            )}
+                          </button>
+
+                          <button
                             onClick={() => cetakKehadiran(item)}
                             disabled={printingId === item.id_user}
                             title="Print Kehadiran"
@@ -682,6 +784,16 @@ export default function StafPage() {
               <input
                 value={editNama}
                 onChange={(e) => setEditNama(e.target.value)}
+                className="w-full rounded-xl border px-4 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-slate-600">Nama Singkat</label>
+              <input
+                value={editNamaSingkat}
+                onChange={(e) => setEditNamaSingkat(e.target.value)}
+                placeholder="Contoh: Budi"
                 className="w-full rounded-xl border px-4 py-2"
               />
             </div>
